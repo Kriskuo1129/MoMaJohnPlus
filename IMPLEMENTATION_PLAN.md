@@ -1,6 +1,6 @@
 # MoMaJohnPlus Implementation Plan
 
-本計畫描述 MoMaJohnPlus 的分階段導入順序。除 Phase 0 文件與專案身份工作外，後續項目均為 **Planned / 尚未實作**。
+本計畫描述 MoMaJohnPlus 的分階段導入順序。Phase 0 與 Phase 1-A 已完成；Phase 1-B 以後均為 **Planned / 尚未實作**。
 
 ## Phase 0 — Project Identity & Documentation Baseline
 
@@ -16,10 +16,17 @@ Phase 0 不修改 Gameplay 行為。
 
 ## Phase 1 — MoMaJohnPlus Core Gameplay Framework
 
-Planned / 尚未實作：
+### Phase 1-A — Plus 基礎規則轉換（已完成）
 
-- 將「點數」對外文字統一為「分數」。
-- 移除舊版模式選擇。
+- 將玩家可見的「點數」統一為「分數」。
+- 移除標準／狂歡模式選擇，改為單一 MoMaJohnPlus 模式。
+- 建立每局 `formalDrawCount = 15` 的正式牌數來源。
+- 讓海底撈月依本局最後一張正式牌判定。
+- 移除 `TEST1129` 特殊名稱及 deterministic 測試劇本。
+- 保留原始摸牌、連線、聽牌、事件、槓桿、下注、補牌與結算流程。
+
+### Phase 1-B～1-C（Planned / 尚未實作）
+
 - 移除舊版下注流程。
 - 建立場／局模型。
 - 建立場中事件三選一。

@@ -8,14 +8,13 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <section id="mode-select" class="mode-select">
-    <div class="mode-select-card"><p>TAIWAN NIGHT MARKET</p><h1>夜市摸麻將</h1>
+  <section id="start-screen" class="mode-select">
+    <div class="mode-select-card"><p>TAIWAN NIGHT MARKET</p><h1>MoMaJohnPlus</h1>
       <label class="player-name-field" for="player-name-input"><span>玩家名稱</span><input id="player-name-input" type="text" maxlength="12" autocomplete="nickname" placeholder="請輸入名稱"></label>
       <p id="player-name-error" class="player-name-error" role="alert" aria-live="polite"></p>
-      <h2>今晚想怎麼玩？</h2>
+      <h2>台灣夜市摸麻將</h2>
       <div class="mode-options">
-        <button type="button" data-mode="standard"><b>標準模式</b><span>夜市經典玩法・每局 15 張</span><small>事件牌、隨機事件，高風險高變化</small></button>
-        <button type="button" data-mode="carnival"><b>狂歡模式 🔥</b><span>純粹拚點・每局 18 張</span><small>沒有隨機事件，多摸三張，專注連線與牌型</small></button>
+        <button id="start-game-button" type="button"><b>開始遊戲</b><span>每局 15 張・事件牌・連線與牌型</span><small>輸入名稱後直接開始 MoMaJohnPlus</small></button>
       </div>
     </div>
   </section>
@@ -25,8 +24,8 @@
         <div class="hud-left">
           <div class="hud-player"><strong id="player-display">玩家</strong></div>
           <div class="hud-points">
-            <div class="hud-total" aria-label="總點數"><strong id="total-score">0</strong></div>
-            <div class="hud-round-points" aria-label="本局點數"><strong id="round-score" class="hud-score-gold">0</strong></div>
+            <div class="hud-total" aria-label="總分數"><strong id="total-score">0</strong></div>
+            <div class="hud-round-points" aria-label="本局分數"><strong id="round-score" class="hud-score-gold">0</strong></div>
           </div>
         </div>
         <div class="hud-rounds"><small>局數</small><strong id="rounds-display">1/6</strong></div>

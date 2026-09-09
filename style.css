@@ -141,3 +141,4 @@
 .score-refresh{animation:score-refresh .38s ease}
 @keyframes score-refresh{45%{transform:scale(1.14);filter:brightness(1.35)}}
 @media(min-width:760px){.game-hud{position:relative;margin-bottom:8px;background:transparent;backdrop-filter:none}.hud-score-panel{min-height:84px}.hud-left{grid-template-rows:minmax(27px,36fr) minmax(47px,64fr)}.hud-player{padding:4px 10px}.hud-player strong{font-size:clamp(.82rem,1.8vw,.98rem)}.hud-points>.hud-round-points,.hud-points>.hud-total{padding:3px 8px}.hud-points>.hud-round-points strong,.hud-points>.hud-total strong{font-size:clamp(1.85rem,3.7vw,2.45rem)}.hud-rounds{padding:8px}.hud-rounds small{font-size:.7rem}.hud-rounds strong{font-size:clamp(1.5rem,3vw,2.05rem)}}
+.mode-options{grid-template-columns:minmax(0,390px);justify-content:center}

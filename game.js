@@ -1,10 +1,10 @@
 const GAME_STATES = Object.freeze({
-  MODE_SELECT: "MODE_SELECT", READY: "READY", DRAWING: "DRAWING",
+  READY: "READY", DRAWING: "DRAWING",
   EVENT_REVEAL: "EVENT_REVEAL", BONUS_PENDING: "BONUS_PENDING", BONUS_DRAW: "BONUS_DRAW",
   ROUND_END: "ROUND_END", GAME_OVER: "GAME_OVER"
 });
 
-const RULES = Object.freeze({ initialAttempts: 6, maxAttempts: 6, bonusChoices: 3 });
+const RULES = Object.freeze({ initialAttempts: 6, maxAttempts: 6, bonusChoices: 3, baseFormalDrawCount: 15 });
 const PLAYER_NAME_STORAGE_KEY = "momajohnPlayerName";
 const NUMERALS = "一二三四五六七八九";
 const SUIT_NAMES = Object.freeze({ wan: "萬子", tong: "筒子", suo: "條子" });
@@ -18,23 +18,15 @@ const CORE_TILES = [
   { id: "red", label: "中", glyph: "🀄", group: "dragon" }, { id: "green", label: "發", glyph: "🀅", group: "dragon" },
   { id: "white", label: "白", glyph: "🀆", group: "dragon" }
 ];
-const STANDARD_TILES = [...CORE_TILES,
+const GAME_TILES = [...CORE_TILES,
   { id: "event-1", label: "事件 A", glyph: "A", special: "event" },
   { id: "event-2", label: "事件 B", glyph: "B", special: "event" }
 ];
-const CARNIVAL_TILES = [...CORE_TILES,
-  { id: "plum", label: "梅", glyph: "🀢", flower: true },
-  { id: "orchid", label: "蘭", glyph: "🀣", flower: true }
-];
-const GAME_MODE_CONFIG = Object.freeze({
-  standard: { id: "standard", label: "標準模式", shortLabel: "標準", handSize: 15, eventsEnabled: true, tiles: STANDARD_TILES },
-  carnival: { id: "carnival", label: "狂歡模式", shortLabel: "狂歡 🔥", handSize: 18, eventsEnabled: false, tiles: CARNIVAL_TILES }
-});
 
 const elements = Object.fromEntries([
   "board", "draw-stack", "total-score", "round-score", "rounds-display", "player-display",
   "player-name-input", "player-name-error", "help-button", "leverage-button",
-  "main-menu-button", "mode-select", "game-shell",
+  "main-menu-button", "start-screen", "game-shell",
   "final-waiting-overlay", "final-waiting-title", "final-waiting-missing",
   "bonus-modal", "bonus-waiting", "bonus-instruction", "bonus-count", "bonus-grid", "bonus-result",
   "message",
@@ -51,30 +43,21 @@ function buildLines() {
 }
 
 const LINE_DEFINITIONS = buildLines();
-const TEST_PLAYER_NAME = "TEST1129";
 const EMPTY_PLAYER_DISPLAY_NAME = "-沒輸入名稱-";
-const TEST_SCENARIOS = Object.freeze({
-  1: Object.freeze({ description: "萬子九張、聽牌、首次補牌成功", suit: "wan", bonusBehavior: "FIRST_HIT" }),
-  2: Object.freeze({ description: "條子九張、聽牌、三次補牌失敗", suit: "suo", bonusBehavior: "FIRST_THREE_MISS" }),
-  3: Object.freeze({ description: "筒子九張、聽牌、首次補牌成功", suit: "tong", bonusBehavior: "FIRST_HIT" }),
-  4: Object.freeze({ description: "天聽、海底撈月、最後一張完成第一線", kind: "EARLY_LAST_LINE" }),
-  5: Object.freeze({ description: "依序完成三條正式連線", kind: "THREE_LINES" }),
-  6: Object.freeze({ description: "第八張事件牌強制瓦斯桶爆炸", kind: "FORCED_EXPLOSION", forcedEventId: "explosion" })
-});
 let game;
 
-function freshGameState(mode = null, playerName = "") {
+function freshGameState(playerName = "") {
   const betStats = Object.fromEntries(BET_DEFINITIONS.map(bet => [bet.id, { played: 0, won: 0, lost: 0 }]));
   return {
-    mode, playerName, state: mode ? GAME_STATES.READY : GAME_STATES.MODE_SELECT, score: 0, totalLines: 0,
-    totalAttemptsGranted: RULES.initialAttempts, attemptsConsumed: 0, roundsPlayed: 0, testScenarioRoundIndex: 0,
+    playerName, state: GAME_STATES.READY, score: 0, totalLines: 0,
+    totalAttemptsGranted: RULES.initialAttempts, attemptsConsumed: 0, roundsPlayed: 0,
     achievementCount: 0, round: null, busy: false, pendingSpecial: null, uiOverlayOpen: false,
     stats: {
       totalScore: 0, totalLines: 0, roundsPlayed: 0, totalRoundCost: 0,
       multiplier1Count: 0, multiplier2Count: 0, multiplier3Count: 0,
       wan5Count: 0, wan7Count: 0, wan9Count: 0, tong5Count: 0, tong7Count: 0, tong9Count: 0,
       tiao5Count: 0, tiao7Count: 0, tiao9Count: 0,
-      fourWindsCount: 0, threeDragonsCount: 0, flowersCount: 0, waitingCount: 0,
+      fourWindsCount: 0, threeDragonsCount: 0, waitingCount: 0,
       bonusDrawCount: 0, bonusSuccessCount: 0, extraRoundsFromBonus: 0,
       eventTriggeredCount: 0, normalEventCount: 0, specialEventCount: 0, positiveEventCount: 0, negativeEventCount: 0, neutralEventCount: 0,
       boardReplaceEventCount: 0, boardRemoveEventCount: 0, boardSwapEventCount: 0, roundRestartEventCount: 0, multiplierBoostEventCount: 0,
@@ -86,69 +69,15 @@ function freshGameState(mode = null, playerName = "") {
   };
 }
 
-function isTestScenarioMode() {
-  return game.playerName === TEST_PLAYER_NAME && game.mode === "standard";
-}
-
-function tilesByIds(ids, tiles = GAME_MODE_CONFIG[game.mode].tiles) {
-  const byId = new Map(tiles.map(tile => [tile.id, tile]));
-  const result = ids.map(id => byId.get(id));
-  if (result.some(tile => !tile) || new Set(ids).size !== ids.length) throw new Error("測試劇本包含無效或重複牌 ID");
-  return result;
-}
-
-function boardWithPositions(positionIds, tiles) {
-  const boardIds = Array(tiles.length).fill(null);
-  Object.entries(positionIds).forEach(([index, id]) => { boardIds[Number(index)] = id; });
-  const used = new Set(boardIds.filter(Boolean));
-  const rest = tiles.map(tile => tile.id).filter(id => !used.has(id));
-  return tilesByIds(boardIds.map(id => id ?? rest.shift()), tiles);
-}
-
-function buildTestScenarioRound(scenarioIndex, tiles) {
-  const scenario = TEST_SCENARIOS[scenarioIndex];
-  if (!scenario) return null;
-  let board;
-  let handIds;
-  if (scenario.suit) {
-    const suitIds = Array.from({ length: 9 }, (_, index) => `${scenario.suit}-${index + 1}`);
-    board = boardWithPositions({ 0: suitIds[0], 1: suitIds[1], 2: suitIds[2], 3: suitIds[3], 4: suitIds[4], 5: "east" }, tiles);
-    handIds = [...suitIds, "south", "west", "north", "red", "green", "white"];
-  } else if (scenario.kind === "EARLY_LAST_LINE") {
-    board = boardWithPositions({ 0: "wan-1", 1: "wan-2", 2: "wan-3", 3: "wan-4", 4: "wan-5", 5: "wan-6" }, tiles);
-    handIds = ["wan-1", "wan-2", "wan-3", "wan-4", "wan-5", "tong-1", "tong-2", "tong-3", "suo-1", "suo-2", "suo-3", "east", "south", "red", "wan-6"];
-  } else if (scenario.kind === "THREE_LINES") {
-    board = [...tiles];
-    const targetIndexes = new Set([0, 1, 2, 3, 4, 5, 6, 12, 18, 24, 30, 10, 15, 20, 25]);
-    const completionIndexes = [1, 6, 10];
-    handIds = [...targetIndexes].filter(index => !completionIndexes.includes(index)).map(index => board[index].id);
-    handIds.push(...completionIndexes.map(index => board[index].id));
-  } else {
-    board = [...tiles];
-    const safeIds = tiles.map(tile => tile.id).filter(id => !id.startsWith("event-"));
-    handIds = [...safeIds.slice(0, 7), "event-1", ...safeIds.slice(7, 14)];
-  }
-  const hand = tilesByIds(handIds, tiles);
-  const handSet = new Set(handIds);
-  const remaining = tiles.filter(tile => !handSet.has(tile.id));
-  if (new Set([...hand, ...remaining].map(tile => tile.id)).size !== tiles.length) throw new Error("測試劇本未保持 36 張牌唯一");
-  return { board, hand, remaining, scenario };
-}
-
-function createRound(options = {}) {
-  const config = GAME_MODE_CONFIG[game.mode];
-  let scenarioIndex = options.testScenarioIndex ?? null;
-  if (scenarioIndex === null && isTestScenarioMode()) scenarioIndex = ++game.testScenarioRoundIndex;
-  const testData = scenarioIndex ? buildTestScenarioRound(scenarioIndex, config.tiles) : null;
-  const board = testData?.board ?? shuffle(config.tiles);
-  const order = testData ? [...testData.hand, ...testData.remaining] : shuffle(config.tiles);
+function createRound(formalDrawCount = RULES.baseFormalDrawCount) {
+  const board = shuffle(GAME_TILES);
+  const order = shuffle(GAME_TILES);
   return {
-    board, hand: order.slice(0, config.handSize), remaining: order.slice(config.handSize), drawIndex: 0, drawn: new Set(), discarded: new Set(), started: false, attemptStart: game.attemptsConsumed,
+    board, formalDrawCount, hand: order.slice(0, formalDrawCount), remaining: order.slice(formalDrawCount), drawIndex: 0, drawn: new Set(), discarded: new Set(), started: false, attemptStart: game.attemptsConsumed,
     completedLines: new Set(), activeWaiting: new Set(), announcedWaiting: new Set(), achievements: new Set(),
     rawPoints: 0, roundScore: 0, roundLines: 0, roundMultiplier: 1, finalMultiplier: 1, leverageConfigured: false, activeBets: [], betsSettled: false, betResults: [], everWaited: false, waitingAnnouncements: 0,
     pointsSettled: false, multiplierPoints: 0, actualMultiplierPoints: 0, betNetPoints: 0, finalRoundChange: 0, scoreBeforeSettlement: 0, eventAttemptDelta: 0, eventAddedAttempts: 0,
-    bonusMissing: new Set(), bonusCandidates: [], selectedBonusTiles: [], bonusResolved: false, bonusPendingStarted: false, bonusAttemptGain: 0,
-    testScenarioIndex: testData ? scenarioIndex : null, testScenario: testData?.scenario ?? null
+    bonusMissing: new Set(), bonusCandidates: [], selectedBonusTiles: [], bonusResolved: false, bonusPendingStarted: false, bonusAttemptGain: 0
   };
 }
 
@@ -205,19 +134,19 @@ function openLeverage() {
   const currentBets = new Set(game.round.activeBets);
   const multiplierOptions = readOnly
     ? `<div class="locked-multiplier"><strong>${game.round.finalMultiplier}x</strong><span>本局實際倍率</span></div>`
-    : [1, 2, 3].map(multiplier => `<label class="bet-option multiplier-option"><input type="radio" name="round-multiplier" value="${multiplier}" ${game.round.roundMultiplier === multiplier ? "checked" : ""} ${!isTestScenarioMode() && multiplier > attemptsRemaining() ? "disabled" : ""}><b>${multiplier}x</b><span>消耗 ${multiplier} 次${multiplier === 3 ? "・高風險" : ""}</span></label>`).join("");
+    : [1, 2, 3].map(multiplier => `<label class="bet-option multiplier-option"><input type="radio" name="round-multiplier" value="${multiplier}" ${game.round.roundMultiplier === multiplier ? "checked" : ""} ${multiplier > attemptsRemaining() ? "disabled" : ""}><b>${multiplier}x</b><span>消耗 ${multiplier} 次${multiplier === 3 ? "・高風險" : ""}</span></label>`).join("");
   const betOptions = readOnly
     ? (game.round.activeBets.length ? `<ul class="locked-bets">${game.round.activeBets.map(id => { const bet = BET_DEFINITIONS.find(item => item.id === id); return `<li><b>${bet?.title ?? id}</b><small>${bet?.description ?? ""}<br>成功 +${bet?.reward ?? 0}｜失敗 -${betPenalty(bet ?? {})}</small></li>`; }).join("")}</ul>` : `<p class="empty-bets">本局沒有額外下注</p>`)
     : BET_DEFINITIONS.filter(bet => bet.enabled).map(bet => {
     const penalty = betPenalty(bet);
     const checked = currentBets.has(bet.id);
     const disabled = !checked && penalty > game.score;
-    return `<label class="bet-option${disabled ? " bet-unavailable" : ""}"><input type="checkbox" name="active-bet" value="${bet.id}" data-penalty="${penalty}" ${checked ? "checked" : ""} ${disabled ? "disabled" : ""}><span><b>${bet.title}</b><small>${bet.description}<br>成功 +${bet.reward}｜失敗 -${penalty}<br>門檻 ${penalty} 點${disabled ? `｜目前 ${game.score}｜🔒 點數不足` : ""}</small></span></label>`;
+    return `<label class="bet-option${disabled ? " bet-unavailable" : ""}"><input type="checkbox" name="active-bet" value="${bet.id}" data-penalty="${penalty}" ${checked ? "checked" : ""} ${disabled ? "disabled" : ""}><span><b>${bet.title}</b><small>${bet.description}<br>成功 +${bet.reward}｜失敗 -${penalty}<br>門檻 ${penalty} 分${disabled ? `｜目前 ${game.score}｜🔒 分數不足` : ""}</small></span></label>`;
   }).join("");
-  const riskSummary = readOnly ? "" : `<aside class="bet-risk-summary"><p>目前總點數 <strong data-risk-score>${game.score}</strong></p><p>最大可能損失 <strong data-risk-total>0</strong></p><p>下注後最低可能剩餘點數 <strong data-risk-remaining>${game.score}</strong></p><p class="bet-risk-message" data-risk-message aria-live="polite"></p></aside>`;
+  const riskSummary = readOnly ? "" : `<aside class="bet-risk-summary"><p>目前總分數 <strong data-risk-score>${game.score}</strong></p><p>最大可能損失 <strong data-risk-total>0</strong></p><p>下注後最低可能剩餘分數 <strong data-risk-remaining>${game.score}</strong></p><p class="bet-risk-message" data-risk-message aria-live="polite"></p></aside>`;
   openModal({
     icon: "注", kicker: `局數 ${attemptDisplay()}・剩餘 ${attemptsRemaining()} 局`, title: readOnly ? "本局下注與狀態" : "本局下注",
-    body: `<div class="betting-panel${readOnly ? " betting-readonly" : ""}"><section><h3>本局倍率</h3>${readOnly ? "" : "<p>本局點數依倍率即時顯示，第一次摸牌才消耗局數。</p>"}<div class="multiplier-options">${multiplierOptions}</div></section><section><h3>${readOnly ? "本局下注" : "額外下注"}</h3>${readOnly ? "" : "<p>可複選；總點數必須足以承擔所有下注的最大損失。</p>"}<div class="bet-options">${betOptions}</div></section>${riskSummary}<section class="round-status-panel"><h3>本局狀態</h3>${renderRoundStatusContent()}</section></div>`,
+    body: `<div class="betting-panel${readOnly ? " betting-readonly" : ""}"><section><h3>本局倍率</h3>${readOnly ? "" : "<p>本局分數依倍率即時顯示，第一次摸牌才消耗局數。</p>"}<div class="multiplier-options">${multiplierOptions}</div></section><section><h3>${readOnly ? "本局下注" : "額外下注"}</h3>${readOnly ? "" : "<p>可複選；總分數必須足以承擔所有下注的最大損失。</p>"}<div class="bet-options">${betOptions}</div></section>${riskSummary}<section class="round-status-panel"><h3>本局狀態</h3>${renderRoundStatusContent()}</section></div>`,
     actions: readOnly ? [{ label: "關閉", action: closeLeverage }] : [{ label: "取消", className: "secondary", action: closeLeverage }, { label: "確認下注", action: confirmLeverage }]
   });
   elements.modal.classList.add("betting-sheet");
@@ -253,7 +182,7 @@ function setupBettingControls() {
     const selected = inputs.filter(item => item.checked).map(item => item.value);
     if (selectedBetRisk(selected) > game.score) {
       input.checked = false;
-      message.textContent = "目前點數不足以承擔這項下注。";
+      message.textContent = "目前分數不足以承擔這項下注。";
     } else message.textContent = "";
     updateRisk();
   }));
@@ -262,10 +191,10 @@ function setupBettingControls() {
 
 function confirmLeverage() {
   const multiplier = Number(elements.modalBody.querySelector('input[name="round-multiplier"]:checked')?.value ?? 1);
-  if (game.state !== GAME_STATES.DRAWING || game.round.started || (!isTestScenarioMode() && multiplier > attemptsRemaining())) return;
+  if (game.state !== GAME_STATES.DRAWING || game.round.started || multiplier > attemptsRemaining()) return;
   const selectedBets = [...elements.modalBody.querySelectorAll('input[name="active-bet"]:checked')].map(input => input.value);
   if (selectedBetRisk(selectedBets) > game.score) {
-    elements.modalBody.querySelector("[data-risk-message]").textContent = "目前點數不足以承擔這組下注。";
+    elements.modalBody.querySelector("[data-risk-message]").textContent = "目前分數不足以承擔這組下注。";
     return;
   }
   game.round.roundMultiplier = multiplier;
@@ -355,9 +284,6 @@ async function drawTile() {
 function startRoundCostIfNeeded() {
   if (game.round.started) return;
   const multiplier = game.round.roundMultiplier;
-  if (isTestScenarioMode() && game.round.testScenarioIndex && attemptsRemaining() < multiplier) {
-    game.totalAttemptsGranted += multiplier - attemptsRemaining();
-  }
   game.round.started = true;
   game.attemptsConsumed = Math.min(game.totalAttemptsGranted, game.attemptsConsumed + multiplier);
   game.roundsPlayed += 1;
@@ -409,16 +335,16 @@ function scoreLines() {
     game.stats.totalLines += 1;
     addRoundPoints(points);
     const label = ordinal === 1 ? "連線成功！" : ordinal === 2 ? "雙線！" : "三線以上！";
-    notifyScore(`${label} +${points} 點`);
+    notifyScore(`${label} +${points} 分`);
     flashLine(line, "line-flash");
-    if (ordinal === 1 && game.round.drawIndex === GAME_MODE_CONFIG[game.mode].handSize) {
+    if (ordinal === 1 && game.round.drawIndex === game.round.formalDrawCount) {
       awardOnce("last-tile-first-line", SCORE_CONFIG.special.lastTileFirstLine, "海底撈月！");
     }
   }
 }
 
 function scoreCollections() {
-  const drawnTiles = GAME_MODE_CONFIG[game.mode].tiles.filter(tile => isOfficiallyDrawn(tile.id));
+  const drawnTiles = GAME_TILES.filter(tile => isOfficiallyDrawn(tile.id));
   for (const [suit, name] of Object.entries(SUIT_NAMES)) {
     const count = drawnTiles.filter(tile => tile.suit === suit).length;
     if (count >= 5) awardOnce(`${suit}-5`, SCORE_CONFIG.suit.five, `${name} 5 張！`, SCORE_CONFIG.suit.five);
@@ -427,7 +353,6 @@ function scoreCollections() {
   }
   if (["east", "south", "west", "north"].every(isOfficiallyDrawn)) awardOnce("winds", SCORE_CONFIG.honor.fourWinds, "四風齊聚！");
   if (["red", "green", "white"].every(isOfficiallyDrawn)) awardOnce("dragons", SCORE_CONFIG.honor.threeDragons, "三元到手！");
-  if (game.mode === "carnival" && ["plum", "orchid"].every(isOfficiallyDrawn)) awardOnce("flowers", SCORE_CONFIG.honor.flowers, "梅蘭齊聚！");
 }
 
 function awardOnce(id, points, label, suitTotalBase = null) {
@@ -435,10 +360,10 @@ function awardOnce(id, points, label, suitTotalBase = null) {
   game.round.achievements.add(id);
   game.achievementCount += 1;
   game.stats.totalAchievements += 1;
-  const statKey = ({ "wan-5": "wan5Count", "wan-7": "wan7Count", "wan-9": "wan9Count", "tong-5": "tong5Count", "tong-7": "tong7Count", "tong-9": "tong9Count", "suo-5": "tiao5Count", "suo-7": "tiao7Count", "suo-9": "tiao9Count", winds: "fourWindsCount", dragons: "threeDragonsCount", flowers: "flowersCount", "early-waiting": "earlyWaitingCount", "last-tile-first-line": "lastTileFirstLineCount" })[id];
+  const statKey = ({ "wan-5": "wan5Count", "wan-7": "wan7Count", "wan-9": "wan9Count", "tong-5": "tong5Count", "tong-7": "tong7Count", "tong-9": "tong9Count", "suo-5": "tiao5Count", "suo-7": "tiao7Count", "suo-9": "tiao9Count", winds: "fourWindsCount", dragons: "threeDragonsCount", "early-waiting": "earlyWaitingCount", "last-tile-first-line": "lastTileFirstLineCount" })[id];
   if (statKey) game.stats[statKey] += 1;
   addRoundPoints(points);
-  const message = `${label} +${points} 點`;
+  const message = `${label} +${points} 分`;
   notifyScore(message, { type: "achievement", duration: 2500 });
 }
 
@@ -461,7 +386,7 @@ function currentWaitingLines() {
     const ids = lineTileIds(line);
     if (ids.filter(isOfficiallyDrawn).length !== 5) return false;
     const missingId = ids.find(id => !isOfficiallyDrawn(id));
-    return !GAME_MODE_CONFIG[game.mode].tiles.find(tile => tile.id === missingId)?.special;
+    return !GAME_TILES.find(tile => tile.id === missingId)?.special;
   });
 }
 
@@ -494,7 +419,7 @@ function flashLine(line, className) {
 
 function continueAfterDraw() {
   if (game.state !== GAME_STATES.DRAWING) return;
-  if (game.round.drawIndex === GAME_MODE_CONFIG[game.mode].handSize) setTimeout(finishRegularDraws, 250);
+  if (game.round.drawIndex === game.round.formalDrawCount) setTimeout(finishRegularDraws, 250);
 }
 
 function findWaitingMissingTiles() {
@@ -549,7 +474,7 @@ function clearFinalWaitingHighlight() {
 function showFinalWaitingPrompt() {
   const waitingCount = game.round.activeWaiting.size;
   const title = waitingCount === 1 ? "聽牌！" : waitingCount === 2 ? "雙聽！" : `聽牌 ×${waitingCount}`;
-  const tiles = GAME_MODE_CONFIG[game.mode].tiles;
+  const tiles = GAME_TILES;
   const chips = [...game.round.bonusMissing].map(id => {
     const tile = tiles.find(item => item.id === id);
     if (!tile) return "";
@@ -574,7 +499,6 @@ function startBonusDraw() {
   game.busy = false;
   game.round.selectedBonusTiles = [];
   game.round.bonusCandidates = [];
-  arrangeTestBonusChoices();
   game.stats.bonusDrawCount += 1;
   openBonusModal();
   elements.message.textContent = `聽牌！進入 ${game.round.remaining.length} 張補牌`;
@@ -583,13 +507,13 @@ function startBonusDraw() {
 }
 
 function openBonusModal() {
-  const tiles = GAME_MODE_CONFIG[game.mode].tiles;
+  const tiles = GAME_TILES;
   elements.bonusWaiting.innerHTML = [...game.round.bonusMissing].map(id => {
     const tile = tiles.find(item => item.id === id);
     return `<span class="waiting-chip"><b>${tile.glyph}</b><small>${tile.label}</small></span>`;
   }).join("");
-  elements.bonusInstruction.textContent = `請從剩餘 ${game.round.remaining.length} 張中選擇 3 張`;
-  elements.bonusCount.textContent = "已選 0 / 3";
+  elements.bonusInstruction.textContent = `請從剩餘 ${game.round.remaining.length} 張中選擇 ${RULES.bonusChoices} 張`;
+  elements.bonusCount.textContent = `已選 0 / ${RULES.bonusChoices}`;
   elements.bonusResult.textContent = "";
   elements.bonusGrid.replaceChildren();
   game.round.remaining.forEach((tile, index) => {
@@ -611,16 +535,6 @@ function closeBonusModal() {
   elements.bonusModal.setAttribute("aria-hidden", "true");
 }
 
-function arrangeTestBonusChoices() {
-  const behavior = game.round.testScenario?.bonusBehavior;
-  if (!behavior) return;
-  const missing = tile => !tile.special && game.round.bonusMissing.has(tile.id);
-  const hits = game.round.remaining.filter(missing);
-  const misses = game.round.remaining.filter(tile => !missing(tile));
-  if (behavior === "FIRST_HIT" && hits.length) game.round.remaining = [hits[0], ...misses, ...hits.slice(1)];
-  if (behavior === "FIRST_THREE_MISS" && misses.length >= 3) game.round.remaining = [...misses, ...hits];
-}
-
 function selectBonusTile(event) {
   if (game.state !== GAME_STATES.BONUS_DRAW || game.round.bonusResolved) return;
   const button = event.currentTarget;
@@ -629,10 +543,10 @@ function selectBonusTile(event) {
   revealButton(button, tile);
   button.classList.add("selected");
   game.round.selectedBonusTiles.push(tile);
-  elements.bonusCount.textContent = `已選 ${game.round.selectedBonusTiles.length} / 3`;
+  elements.bonusCount.textContent = `已選 ${game.round.selectedBonusTiles.length} / ${RULES.bonusChoices}`;
   game.round.bonusCandidates = [...game.round.selectedBonusTiles];
   const hit = !tile.special && game.round.bonusMissing.has(tile.id);
-  if (hit || game.round.selectedBonusTiles.length === 3) {
+  if (hit || game.round.selectedBonusTiles.length === RULES.bonusChoices) {
     elements.bonusGrid.querySelectorAll("button").forEach(item => { item.disabled = true; });
     if (hit) {
       button.classList.add("bonus-hit", "bonus-success-hit");
@@ -662,7 +576,7 @@ function resolveBonusDraw() {
   const hitLabel = hits.map(tile => tile.label).join("、");
   elements.bonusResult.innerHTML = success
     ? `<strong>${hits.length > 1 ? "雙重命中！" : "補牌成功！"}</strong><br>你摸中了：${hitLabel}<br>${game.round.bonusAttemptGain ? "獲得 +1 次！" : "剩餘次數已達上限 6 次"}`
-    : `<strong>補牌失敗，差一點！</strong><br>你需要的是：${[...game.round.bonusMissing].map(id => GAME_MODE_CONFIG[game.mode].tiles.find(tile => tile.id === id)?.label).join("、")}`;
+    : `<strong>補牌失敗，差一點！</strong><br>你需要的是：${[...game.round.bonusMissing].map(id => GAME_TILES.find(tile => tile.id === id)?.label).join("、")}`;
   elements.message.textContent = success ? "補牌成功！額外獲得 1 次！" : "補牌失敗，差一點！";
   notifyScore(success ? "補牌成功！額外獲得 1 次！" : "補牌失敗，差一點！", true);
   setTimeout(() => { closeBonusModal(); endRound(true, success); }, 1500);
@@ -687,10 +601,7 @@ function openEventChoice(tile) {
 
 function revealSpecialEvent() {
   if (game.state !== GAME_STATES.EVENT_REVEAL) return;
-  const forcedEventId = game.round.testScenario?.forcedEventId;
-  const specialEvent = forcedEventId
-    ? EVENT_DEFINITIONS.find(event => event.enabled && event.id === forcedEventId)
-    : weightedRandom(EVENT_DEFINITIONS.filter(event => event.enabled));
+  const specialEvent = weightedRandom(EVENT_DEFINITIONS.filter(event => event.enabled));
   game.pendingSpecial.eventId = specialEvent.id;
   elements.modalIcon.classList.remove("deciding");
   const isSpecial = specialEvent.category === "SPECIAL";
@@ -713,7 +624,7 @@ const EVENT_EFFECT_HANDLERS = {
     addRoundPoints(event.value);
     if (event.value >= 0) game.stats.eventScoreGain += event.value;
     else game.stats.eventScoreLoss += Math.abs(event.value);
-    return { effectLabel: `${event.value >= 0 ? "+" : ""}${event.value} 點` };
+    return { effectLabel: `${event.value >= 0 ? "+" : ""}${event.value} 分` };
   },
   SUB_SCORE(event) { return EVENT_EFFECT_HANDLERS.ADD_SCORE({ ...event, value: -Math.abs(event.value) }); },
   RANDOM_SCORE(event) {
@@ -723,7 +634,7 @@ const EVENT_EFFECT_HANDLERS = {
     addRoundPoints(value);
     if (value >= 0) game.stats.eventScoreGain += value;
     else game.stats.eventScoreLoss += Math.abs(value);
-    return { effectLabel: `${value >= 0 ? "+" : ""}${value} 點` };
+    return { effectLabel: `${value >= 0 ? "+" : ""}${value} 分` };
   },
   ADD_ROUNDS(event) {
     const granted = grantAttempts(event.value);
@@ -745,7 +656,7 @@ const EVENT_EFFECT_HANDLERS = {
     game.round.rawPoints = after;
     game.round.roundScore = after;
     if (delta < 0) game.stats.eventScoreLoss += Math.abs(delta); else game.stats.eventScoreGain += delta;
-    return { effectLabel: `本局目前點數減半（${formatSignedScore(delta * game.round.finalMultiplier)} 點）` };
+    return { effectLabel: `本局目前分數減半（${formatSignedScore(delta * game.round.finalMultiplier)} 分）` };
   },
   DOUBLE_FINAL_MULTIPLIER() {
     game.round.finalMultiplier = Math.min(6, game.round.finalMultiplier * 2);
@@ -826,7 +737,7 @@ function finishSpecialEvent() {
 function restartCurrentRound() {
   const previous = game.round;
   rollbackRoundOutcomeStats(previous);
-  const replacement = createRound({ testScenarioIndex: previous.testScenarioIndex });
+  const replacement = createRound(previous.formalDrawCount);
   replacement.started = true;
   replacement.attemptStart = previous.attemptStart;
   replacement.roundMultiplier = previous.roundMultiplier;
@@ -847,7 +758,7 @@ function rollbackRoundOutcomeStats(round) {
   game.totalLines = Math.max(0, game.totalLines - round.roundLines);
   game.stats.totalLines = Math.max(0, game.stats.totalLines - round.roundLines);
   game.stats.waitingCount = Math.max(0, game.stats.waitingCount - round.waitingAnnouncements);
-  const statMap = { "wan-5": "wan5Count", "wan-7": "wan7Count", "wan-9": "wan9Count", "tong-5": "tong5Count", "tong-7": "tong7Count", "tong-9": "tong9Count", "suo-5": "tiao5Count", "suo-7": "tiao7Count", "suo-9": "tiao9Count", winds: "fourWindsCount", dragons: "threeDragonsCount", flowers: "flowersCount", "early-waiting": "earlyWaitingCount", "last-tile-first-line": "lastTileFirstLineCount" };
+  const statMap = { "wan-5": "wan5Count", "wan-7": "wan7Count", "wan-9": "wan9Count", "tong-5": "tong5Count", "tong-7": "tong7Count", "tong-9": "tong9Count", "suo-5": "tiao5Count", "suo-7": "tiao7Count", "suo-9": "tiao9Count", winds: "fourWindsCount", dragons: "threeDragonsCount", "early-waiting": "earlyWaitingCount", "last-tile-first-line": "lastTileFirstLineCount" };
   round.achievements.forEach(id => {
     const key = statMap[id];
     if (key) game.stats[key] = Math.max(0, game.stats[key] - 1);
@@ -905,13 +816,11 @@ function endRound(hadBonus, bonusSuccess, forceGameOver = false) {
   recordRoundHighs();
   updateHUD();
   const bonusText = hadBonus ? `<p><strong>${bonusSuccess ? (game.round.bonusAttemptGain ? "補牌成功！+1 次" : "補牌成功！次數已達上限") : "補牌未中"}</strong></p>` : "";
-  const betText = betResults.length ? `<section class="result-bets${game.round.betNetPoints < 0 ? " negative" : ""}"><small>下注損益</small><strong>${formatSignedScore(game.round.betNetPoints)} 點</strong></section>` : "";
-  const needsNextTestScenario = isTestScenarioMode() && (game.round.testScenarioIndex ?? 0) < 6;
-  if (!forceGameOver && needsNextTestScenario && attemptsRemaining() === 0) game.totalAttemptsGranted += 1;
+  const betText = betResults.length ? `<section class="result-bets${game.round.betNetPoints < 0 ? " negative" : ""}"><small>下注損益</small><strong>${formatSignedScore(game.round.betNetPoints)} 分</strong></section>` : "";
   const gameEnded = forceGameOver || attemptsRemaining() === 0;
   openModal({
     icon: bonusSuccess ? "＋1" : "結", kicker: `ROUND RESULT・第 ${game.roundsPlayed} 局`, title: "單局結算",
-    body: `<div class="round-result"><section class="result-round-points${game.round.multiplierPoints < 0 ? " negative" : ""}"><small>本局點數</small><strong>${formatSignedScore(game.round.multiplierPoints)} 點</strong></section>${bonusText}${betText}<section class="result-final${game.round.finalRoundChange < 0 ? " negative" : ""}"><small>本局最終變化</small><strong>${formatSignedScore(game.round.finalRoundChange)} 點</strong></section><section class="result-total"><small>總點數</small><strong data-round-total>${totalBefore}</strong></section><p class="result-meta">完成連線 ${game.round.roundLines} 條・點數成就 ${game.round.achievements.size} 項</p></div>`,
+    body: `<div class="round-result"><section class="result-round-points${game.round.multiplierPoints < 0 ? " negative" : ""}"><small>本局分數</small><strong>${formatSignedScore(game.round.multiplierPoints)} 分</strong></section>${bonusText}${betText}<section class="result-final${game.round.finalRoundChange < 0 ? " negative" : ""}"><small>本局最終變化</small><strong>${formatSignedScore(game.round.finalRoundChange)} 分</strong></section><section class="result-total"><small>總分數</small><strong data-round-total>${totalBefore}</strong></section><p class="result-meta">完成連線 ${game.round.roundLines} 條・分數成就 ${game.round.achievements.size} 項</p></div>`,
     actions: [{ label: gameEnded ? "查看最終成績" : "下一局", action: gameEnded ? showGameOver : startRound }]
   });
   animateRoundTotal(totalBefore, game.score);
@@ -955,12 +864,11 @@ function recordRoundHighs() {
 function buildScoreReport() {
   const s = game.stats;
   const successRate = s.bonusDrawCount ? Math.round(s.bonusSuccessCount / s.bonusDrawCount * 100) : 0;
-  const flowers = game.mode === "carnival" ? `<br>梅蘭齊聚：<strong>${s.flowersCount}</strong>` : "";
   const eventNetProfit = s.eventScoreGain - s.eventScoreLoss;
   const betNetProfit = s.betScoreGain - s.betScoreLoss;
   return `<div class="game-over-report"><strong class="game-over-score">${game.score}</strong><div class="report-grid">
-    <section><h3>總成績</h3><dl class="result-summary"><div><dt>連線數</dt><dd>${game.totalLines}</dd></div><div><dt>總局數</dt><dd>${s.roundsPlayed}</dd></div><div><dt>單局最高點數</dt><dd>${s.highestRoundSettledPoints}</dd></div><div><dt>補牌</dt><dd>${s.bonusSuccessCount} / ${s.bonusDrawCount}（${successRate}%）</dd></div></dl></section>
-    <section><h3>牌型成就</h3><p>萬子 5／7／9 張：<strong>${s.wan5Count}／${s.wan7Count}／${s.wan9Count}</strong><br>筒子 5／7／9 張：<strong>${s.tong5Count}／${s.tong7Count}／${s.tong9Count}</strong><br>條子 5／7／9 張：<strong>${s.tiao5Count}／${s.tiao7Count}／${s.tiao9Count}</strong><br>四風：<strong>${s.fourWindsCount}</strong><br>三元：<strong>${s.threeDragonsCount}</strong>${flowers}<br>天聽：<strong>${s.earlyWaitingCount}</strong><br>海底撈月：<strong>${s.lastTileFirstLineCount}</strong></p></section>
+    <section><h3>總成績</h3><dl class="result-summary"><div><dt>連線數</dt><dd>${game.totalLines}</dd></div><div><dt>總局數</dt><dd>${s.roundsPlayed}</dd></div><div><dt>單局最高分數</dt><dd>${s.highestRoundSettledPoints}</dd></div><div><dt>補牌</dt><dd>${s.bonusSuccessCount} / ${s.bonusDrawCount}（${successRate}%）</dd></div></dl></section>
+    <section><h3>牌型成就</h3><p>萬子 5／7／9 張：<strong>${s.wan5Count}／${s.wan7Count}／${s.wan9Count}</strong><br>筒子 5／7／9 張：<strong>${s.tong5Count}／${s.tong7Count}／${s.tong9Count}</strong><br>條子 5／7／9 張：<strong>${s.tiao5Count}／${s.tiao7Count}／${s.tiao9Count}</strong><br>四風：<strong>${s.fourWindsCount}</strong><br>三元：<strong>${s.threeDragonsCount}</strong><br>天聽：<strong>${s.earlyWaitingCount}</strong><br>海底撈月：<strong>${s.lastTileFirstLineCount}</strong></p></section>
     <section class="profit-summary"><h3>事件與下注</h3><p><span>事件總損益</span><strong>${formatSignedScore(eventNetProfit)}</strong></p><p><span>下注總損益</span><strong>${formatSignedScore(betNetProfit)}</strong></p></section>
   </div></div>`;
 }
@@ -968,7 +876,7 @@ function buildScoreReport() {
 function formatSignedScore(value) { return value > 0 ? `+${value}` : String(value); }
 
 function getProgress() {
-  const drawn = GAME_MODE_CONFIG[game.mode].tiles.filter(tile => game.round && isOfficiallyDrawn(tile.id));
+  const drawn = GAME_TILES.filter(tile => game.round && isOfficiallyDrawn(tile.id));
   const suits = Object.entries(SUIT_NAMES).map(([suit, name]) => {
     const count = drawn.filter(tile => tile.suit === suit).length;
     const score = count >= 9 ? SCORE_CONFIG.suit.nine : count >= 7 ? SCORE_CONFIG.suit.seven : count >= 5 ? SCORE_CONFIG.suit.five : 0;
@@ -977,7 +885,6 @@ function getProgress() {
   const winds = ["east", "south", "west", "north"].filter(id => game.round && isOfficiallyDrawn(id)).length;
   const dragons = ["red", "green", "white"].filter(id => game.round && isOfficiallyDrawn(id)).length;
   const progress = [...suits, { label: "四風", value: `${winds} / 4${winds === 4 ? ` ✓ +${SCORE_CONFIG.honor.fourWinds}` : ""}`, done: winds === 4 }, { label: "三元", value: `${dragons} / 3${dragons === 3 ? ` ✓ +${SCORE_CONFIG.honor.threeDragons}` : ""}`, done: dragons === 3 }];
-  if (game.mode === "carnival") { const flowers = ["plum", "orchid"].filter(isOfficiallyDrawn).length; progress.push({ label: "梅蘭", value: `${flowers} / 2${flowers === 2 ? ` ✓ +${SCORE_CONFIG.honor.flowers}` : ""}`, done: flowers === 2 }); }
   return progress;
 }
 
@@ -1028,7 +935,7 @@ function updateHUD() {
 
 function updateDrawStackUI() {
   if (!game.round) return;
-  const total = GAME_MODE_CONFIG[game.mode].handSize;
+  const total = game.round.formalDrawCount;
   const drawn = game.round.drawIndex;
   const remaining = Math.max(0, total - drawn);
   elements.drawStack.textContent = `摸牌 (${remaining})`;
@@ -1088,11 +995,9 @@ function buildEventGuideSection(title, events, totalWeight) {
 }
 
 function buildScoringGuideContent() {
-  const config = GAME_MODE_CONFIG[game.mode];
-  const modeRule = config.eventsEnabled ? `每局 ${config.handSize} 張，包含兩張事件牌` : `每局 ${config.handSize} 張，無事件，專注連線與牌型`;
-  const flowers = game.mode === "carnival" ? `<p><b>狂歡花牌</b><span>梅蘭齊聚 +${SCORE_CONFIG.honor.flowers}</span></p>` : "";
+  const gameRule = `每局 ${game.round.formalDrawCount} 張，包含兩張事件牌`;
   const bets = BET_DEFINITIONS.filter(bet => bet.enabled).map(bet => `${bet.title}：${bet.description}<br>成功 +${bet.reward}／失敗 -${betPenalty(bet)}`).join("<br>");
-  return `<section class="help-section"><h3>點數獲得方式</h3><div class="rules-list scoring-guide"><p><b>玩法</b><span>${modeRule}</span></p><p><b>倍率</b><span>本局點數依倍率即時顯示<br>額外下注不乘倍率</span></p><p><b>連線</b><span>第 1 條 +30 點<br>第 2 條 +60 點<br>第 3 條起每條 +90 點</span></p><p><b>牌型</b><span>萬／筒／條：5 張 +${SCORE_CONFIG.suit.five}、7 張累計 +${SCORE_CONFIG.suit.seven}、9 張累計 +${SCORE_CONFIG.suit.nine}<br>四風 +${SCORE_CONFIG.honor.fourWinds}／三元 +${SCORE_CONFIG.honor.threeDragons}</span></p>${flowers}<p><b>特殊成就</b><span>天聽 +${SCORE_CONFIG.special.earlyWaiting}<br>海底撈月 +${SCORE_CONFIG.special.lastTileFirstLine}</span></p><p><b>額外下注</b><span>${bets}</span></p></div></section>`;
+  return `<section class="help-section"><h3>分數獲得方式</h3><div class="rules-list scoring-guide"><p><b>玩法</b><span>${gameRule}</span></p><p><b>倍率</b><span>本局分數依倍率即時顯示<br>額外下注不乘倍率</span></p><p><b>連線</b><span>第 1 條 +30 分<br>第 2 條 +60 分<br>第 3 條起每條 +90 分</span></p><p><b>牌型</b><span>萬／筒／條：5 張 +${SCORE_CONFIG.suit.five}、7 張累計 +${SCORE_CONFIG.suit.seven}、9 張累計 +${SCORE_CONFIG.suit.nine}<br>四風 +${SCORE_CONFIG.honor.fourWinds}／三元 +${SCORE_CONFIG.honor.threeDragons}</span></p><p><b>特殊成就</b><span>天聽 +${SCORE_CONFIG.special.earlyWaiting}<br>海底撈月 +${SCORE_CONFIG.special.lastTileFirstLine}</span></p><p><b>額外下注</b><span>${bets}</span></p></div></section>`;
 }
 
 function openHelp() {
@@ -1100,9 +1005,7 @@ function openHelp() {
   game.uiOverlayOpen = true;
   const enabledEvents = EVENT_DEFINITIONS.filter(event => event.enabled);
   const totalWeight = enabledEvents.reduce((sum, event) => sum + event.weight, 0);
-  const eventContent = GAME_MODE_CONFIG[game.mode].eventsEnabled
-    ? `<section class="help-section"><h3>事件一覽</h3><div class="event-guide">${buildEventGuideSection("一般事件", enabledEvents.filter(event => event.category === "NORMAL"), totalWeight)}${buildEventGuideSection("特殊事件", enabledEvents.filter(event => event.category === "SPECIAL"), totalWeight)}</div></section>`
-    : "";
+  const eventContent = `<section class="help-section"><h3>事件一覽</h3><div class="event-guide">${buildEventGuideSection("一般事件", enabledEvents.filter(event => event.category === "NORMAL"), totalWeight)}${buildEventGuideSection("特殊事件", enabledEvents.filter(event => event.category === "SPECIAL"), totalWeight)}</div></section>`;
   openModal({
     icon: "說", kicker: "遊戲說明", title: "說明",
     body: `<div class="help-guide">${buildScoringGuideContent()}${eventContent}</div>`,
@@ -1127,12 +1030,10 @@ function openRoundStatus() {
 function openScoringGuide() {
   if (game.state !== GAME_STATES.DRAWING || game.busy || game.uiOverlayOpen) return;
   game.uiOverlayOpen = true;
-  const config = GAME_MODE_CONFIG[game.mode];
-  const modeRule = config.eventsEnabled ? `每局 ${config.handSize} 張，包含兩張事件牌` : `每局 ${config.handSize} 張，無事件，專注連線與牌型`;
-  const flowers = game.mode === "carnival" ? `<p><b>狂歡花牌</b><span>梅蘭齊聚 +${SCORE_CONFIG.honor.flowers}</span></p>` : "";
+  const gameRule = `每局 ${game.round.formalDrawCount} 張，包含兩張事件牌`;
   openModal({
-    icon: "點", kicker: "POINTS GUIDE", title: "點數獲得方式",
-    body: `<div class="rules-list scoring-guide"><p><b>玩法</b><span>${modeRule}</span></p><p><b>局末倍率</b><span>本局所有正負點數於結算時統一 × 倍率<br>額外下注不乘倍率</span></p><p><b>連線</b><span>第 1 條 +30 點<br>第 2 條 +60 點<br>第 3 條起每條 +90 點</span></p><p><b>花色收集</b><span>萬／筒／條取最高級距、不累加<br>5 張 +${SCORE_CONFIG.suit.five}，7 張 +${SCORE_CONFIG.suit.seven}，9 張 +${SCORE_CONFIG.suit.nine}</span></p><p><b>四風／三元</b><span>東南西北 +${SCORE_CONFIG.honor.fourWinds}<br>中發白 +${SCORE_CONFIG.honor.threeDragons}</span></p><p><b>特殊成就</b><span>前 5 張形成聽牌：天聽 +${SCORE_CONFIG.special.earlyWaiting}<br>最後一張完成首條線：海底撈月 +${SCORE_CONFIG.special.lastTileFirstLine}</span></p>${flowers}</div>`,
+    icon: "分", kicker: "SCORE GUIDE", title: "分數獲得方式",
+    body: `<div class="rules-list scoring-guide"><p><b>玩法</b><span>${gameRule}</span></p><p><b>局末倍率</b><span>本局所有正負分數於結算時統一 × 倍率<br>額外下注不乘倍率</span></p><p><b>連線</b><span>第 1 條 +30 分<br>第 2 條 +60 分<br>第 3 條起每條 +90 分</span></p><p><b>花色收集</b><span>萬／筒／條取最高級距、不累加<br>5 張 +${SCORE_CONFIG.suit.five}，7 張 +${SCORE_CONFIG.suit.seven}，9 張 +${SCORE_CONFIG.suit.nine}</span></p><p><b>四風／三元</b><span>東南西北 +${SCORE_CONFIG.honor.fourWinds}<br>中發白 +${SCORE_CONFIG.honor.threeDragons}</span></p><p><b>特殊成就</b><span>前 5 張形成聽牌：天聽 +${SCORE_CONFIG.special.earlyWaiting}<br>最後一張完成首條線：海底撈月 +${SCORE_CONFIG.special.lastTileFirstLine}</span></p></div>`,
     actions: [{ label: "關閉", action: closeInfoModal }]
   });
 }
@@ -1143,7 +1044,7 @@ function closeInfoModal() {
 }
 
 function openEventGuide() {
-  if (!GAME_MODE_CONFIG[game.mode].eventsEnabled || game.state !== GAME_STATES.DRAWING || game.busy || game.uiOverlayOpen) return;
+  if (game.state !== GAME_STATES.DRAWING || game.busy || game.uiOverlayOpen) return;
   game.uiOverlayOpen = true;
   const enabledEvents = EVENT_DEFINITIONS.filter(event => event.enabled);
   const totalWeight = enabledEvents.reduce((sum, event) => sum + event.weight, 0);
@@ -1192,17 +1093,15 @@ function savePlayerName(name) {
 }
 
 function resetGame() {
-  const mode = game.mode;
   const playerName = game.playerName;
-  game = freshGameState(mode, playerName);
-  elements.modeSelect.classList.add("hidden");
+  game = freshGameState(playerName);
+  elements.startScreen.classList.add("hidden");
   elements.gameShell.classList.remove("hidden");
   startRound();
   enableGlyphFallback();
 }
 
-function selectMode(mode) {
-  if (!GAME_MODE_CONFIG[mode]) return;
+function startGame() {
   const enteredPlayerName = elements.playerNameInput.value.trim().slice(0, 12);
   const playerName = enteredPlayerName || EMPTY_PLAYER_DISPLAY_NAME;
   if (enteredPlayerName) {
@@ -1210,18 +1109,18 @@ function selectMode(mode) {
     savePlayerName(enteredPlayerName);
   }
   elements.playerNameError.textContent = "";
-  game = freshGameState(mode, playerName);
-  elements.modeSelect.classList.add("hidden");
+  game = freshGameState(playerName);
+  elements.startScreen.classList.add("hidden");
   elements.gameShell.classList.remove("hidden");
   startRound();
   enableGlyphFallback();
 }
 
-function showModeSelect() {
+function showStartScreen() {
   closeModal();
   closeBonusModal();
   elements.gameShell.classList.add("hidden");
-  elements.modeSelect.classList.remove("hidden");
+  elements.startScreen.classList.remove("hidden");
   elements.playerNameInput.value = game.playerName === EMPTY_PLAYER_DISPLAY_NAME ? "" : (game.playerName || loadPlayerName());
   elements.playerNameError.textContent = "";
 }
@@ -1241,19 +1140,19 @@ function cancelMainMenu() { game.uiOverlayOpen = false; closeModal(); }
 
 function returnToMainMenu() {
   const playerName = game.playerName || elements.playerNameInput.value.trim().slice(0, 12);
-  game = freshGameState(null, playerName);
-  showModeSelect();
+  game = freshGameState(playerName);
+  showStartScreen();
 }
 
 elements.helpButton.addEventListener("click", openHelp);
 elements.leverageButton.addEventListener("click", openLeverage);
 elements.drawStack.addEventListener("click", drawTile);
 elements.mainMenuButton.addEventListener("click", requestMainMenu);
-document.querySelectorAll("[data-mode]").forEach(button => button.addEventListener("click", () => selectMode(button.dataset.mode)));
+document.querySelector("#start-game-button").addEventListener("click", startGame);
 elements.playerNameInput.addEventListener("input", () => {
   elements.playerNameError.textContent = "";
   const playerName = elements.playerNameInput.value.trim().slice(0, 12);
   if (playerName) savePlayerName(playerName);
 });
-game = freshGameState(null, loadPlayerName());
-showModeSelect();
+game = freshGameState(loadPlayerName());
+showStartScreen();

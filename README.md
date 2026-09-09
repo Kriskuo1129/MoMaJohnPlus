@@ -5,7 +5,8 @@ MoMaJohnPlus 是由原始 [MoMaJohn](https://github.com/Kriskuo1129/MoMaJohn) �
 ## Repository 狀態
 
 - 已建立 MoMaJohnPlus 專案身份與文件基線。
-- Gameplay 仍維持原始 MoMaJohn baseline，Phase 0 沒有改變遊戲行為。
+- Phase 1-A 已完成單一遊戲模式、15 張正式牌基準、分數用語與基礎規則轉換。
+- 摸牌、連線、聽牌、事件、槓桿、既有下注、補牌及結算仍延續原始 Gameplay baseline。
 - Plus 新功能將依開發計畫分階段導入。
 - 原始 MoMaJohn Repository 仍獨立保留，不受本專案後續開發影響。
 
@@ -38,15 +39,15 @@ python -m http.server 8000
 
 - `index.html`：遊戲頁面與 Modal 結構。
 - `style.css`：桌面、手機、棋盤、事件及動畫樣式。
-- `game-config.js`：原始 Gameplay 的點數、事件權重與額外下注設定。
-- `game.js`：原始 Gameplay 的牌組、狀態機、點數結算、事件、補牌及統計邏輯。
+- `game-config.js`：Gameplay 的分數、事件權重與額外下注設定。
+- `game.js`：牌組、狀態機、分數結算、事件、補牌及統計邏輯。
 - `GAME_SPEC.md`：MoMaJohnPlus 最新遊戲設計規格；其中 Plus 功能目前均為規劃內容。
 - `IMPLEMENTATION_PLAN.md`：MoMaJohnPlus 分階段開發計畫。
 - [`docs/legacy/`](docs/legacy/)：完整保留的原始 MoMaJohn 規格、數值、更新與工作紀錄。
 
 ## Legacy Gameplay baseline
 
-目前可執行版本仍使用原始 MoMaJohn 規則，包括原有模式、牌數、下注、事件、計分與 State Machine。Phase 0 只建立新專案身份和文件，不把任何 Plus 規劃描述為已完成。
+目前可執行版本已完成 Phase 1-A 基礎轉換：玩家輸入名稱後直接進入單一 MoMaJohnPlus 模式，每局基準正式摸牌數為 15 張。其他 Plus 系統仍為 Planned / 尚未實作。
 
 原始文件：
 
