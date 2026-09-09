@@ -70,7 +70,19 @@ function freshGameState(playerName = "") {
   };
 }
 
-function drawPreRoundEvents() { return shuffle(PRE_ROUND_EVENT_DEFINITIONS).slice(0, 3); }
+function getPreRoundEventWeight(event) { return event.type === "ITEM" ? ITEM_DEFINITIONS.length : 1; }
+
+function drawPreRoundEvents(random = Math.random) {
+  const pool = [...PRE_ROUND_EVENT_DEFINITIONS];
+  const selected = [];
+  while (selected.length < 3 && pool.length) {
+    const event = weightedRandom(pool, random(), getPreRoundEventWeight);
+    selected.push(event);
+    // Remove the selected definition, not one unit of its virtual weight.
+    pool.splice(pool.indexOf(event), 1);
+  }
+  return selected;
+}
 
 function createRound(formalDrawCount = RULES.baseFormalDrawCount, eventOptions = drawPreRoundEvents()) {
   const board = shuffle(GAME_TILES);
@@ -94,11 +106,11 @@ function shuffle(items) {
   return copy;
 }
 
-function weightedRandom(events, random = Math.random()) {
-  const total = events.reduce((sum, event) => sum + event.weight, 0);
+function weightedRandom(events, random = Math.random(), getWeight = event => event.weight) {
+  const total = events.reduce((sum, event) => sum + getWeight(event), 0);
   let cursor = random * total;
   for (const event of events) {
-    cursor -= event.weight;
+    cursor -= getWeight(event);
     if (cursor < 0) return event;
   }
   return events[events.length - 1];
@@ -216,6 +228,24 @@ function specialEventConfig(event = null) {
 }
 
 function itemById(itemId) { return ITEM_DEFINITIONS.find(item => item.id === itemId); }
+
+function getFortuneScore() {
+  return game.items.reduce((score, itemId) => score + (itemById(itemId)?.fortuneScore ?? 0), 0);
+}
+
+function getFortuneModifier(sentiment, score = getFortuneScore()) {
+  if (sentiment === "NEUTRAL") return 1;
+  const clamped = Math.max(-3, Math.min(3, score));
+  return FORTUNE_MODIFIERS[clamped][sentiment] ?? 1;
+}
+
+function getEffectiveEventWeight(event) {
+  return event.weight * getFortuneModifier(event.sentiment);
+}
+
+function drawInRoundEvent(random = Math.random()) {
+  return weightedRandom(EVENT_DEFINITIONS.filter(event => event.enabled), random, getEffectiveEventWeight);
+}
 function hasItem(itemId) { return game.items.includes(itemId); }
 
 function beginItemAcquisition(event, leverage) {
@@ -820,8 +850,9 @@ function openEventChoice(tile) {
 }
 
 function revealSpecialEvent() {
-  if (game.state !== GAME_STATES.EVENT_REVEAL) return;
-  const specialEvent = weightedRandom(EVENT_DEFINITIONS.filter(event => event.enabled));
+  if (game.state !== GAME_STATES.EVENT_REVEAL || !game.pendingSpecial || game.pendingSpecial.resolved) return;
+  game.pendingSpecial.resolved = true;
+  const specialEvent = drawInRoundEvent();
   game.pendingSpecial.eventId = specialEvent.id;
   elements.modalIcon.classList.remove("deciding");
   const isSpecial = specialEvent.category === "SPECIAL";
@@ -833,8 +864,10 @@ function revealSpecialEvent() {
   elements.modalTitle.textContent = `【${specialEvent.title}】`;
   const result = executeEvent(specialEvent);
   game.pendingSpecial.result = result;
-  const resultClass = specialEvent.sentiment === "POSITIVE" ? "positive" : specialEvent.sentiment === "NEGATIVE" ? "negative" : "neutral";
-  elements.modalBody.innerHTML = `<p class="event-story">${specialEvent.story}</p><p class="event-effect ${resultClass}">${result.effectLabel}</p>`;
+  if (result.blocked) elements.modalTitle.textContent = "免洗護身符發動！";
+  const resultClass = result.blocked ? "positive" : specialEvent.sentiment === "POSITIVE" ? "positive" : specialEvent.sentiment === "NEGATIVE" ? "negative" : "neutral";
+  const story = result.blocked ? `「${specialEvent.title}」被擋下了，護身符已消耗。` : specialEvent.story;
+  elements.modalBody.innerHTML = `<p class="event-story">${story}</p><p class="event-effect ${resultClass}">${result.effectLabel}</p>`;
   renderModalActions([{ label: "繼續", action: finishSpecialEvent }]);
   updateHUD();
 }
@@ -932,11 +965,17 @@ function animateBoardStateChange(tileId, className) {
 }
 
 function executeEvent(event) {
+  // This dispatcher is exclusively for in-round events; intercept before any handler.
+  const charmIndex = event.sentiment === "NEGATIVE" ? game.items.indexOf("disposable-charm") : -1;
+  if (charmIndex !== -1) {
+    game.items.splice(charmIndex, 1);
+    return { blocked: true, effectLabel: "護身符替你擋下了這次壞事。" };
+  }
   return (EVENT_EFFECT_HANDLERS[event.effectType] ?? EVENT_EFFECT_HANDLERS.NONE)(event);
 }
 
 function finishSpecialEvent() {
-  if (game.state !== GAME_STATES.EVENT_REVEAL) return;
+  if (game.state !== GAME_STATES.EVENT_REVEAL || !game.pendingSpecial?.result) return;
   const result = game.pendingSpecial.result;
   game.pendingSpecial = null;
   closeModal();

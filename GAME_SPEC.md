@@ -1,6 +1,6 @@
 # MoMaJohnPlus 遊戲設計規格
 
-> 狀態：Phase 1-A～1-D 已完成；Phase 1-E 以後仍為 Planned / 尚未實作。
+> 狀態：Phase 1-A～1-E 已完成；Phase 2 以後仍為 Planned / 尚未實作。
 > 本文件定義 MoMaJohnPlus 的目標設計。現行 Gameplay 已具備正式 PRE_ROUND Event Pool、場中下注／特殊事件、Item 系統及 14～16 張 dynamic round config。
 
 ## 1. 名詞定義
@@ -25,7 +25,7 @@
 
 跨局保留：總分、剩餘局數、Item。
 
-Item 可以跨局持有，但 Item 產生的效果不得延遲到下一局。每一局開始時重新讀取目前持有 Item 並建立該局效果。禁止設計跨局 pending effect，例如「本局抽到三張國字，下一局多抽一張」。
+Item 可以跨局持有，但 Item 產生的效果不得延遲到下一局。每一局開始時重新讀取目前持有 Item；籤的運勢更在每次局中事件抽取時重新計算。禁止設計跨局 pending effect，例如「本局抽到三張國字，下一局多抽一張」。
 
 ## 4. 場中事件
 
@@ -104,7 +104,7 @@ Item 欄最多 3 格。Item 可以是持續型、自動消耗型或主動消耗�
 
 Phase 1-D 已完成三格 inventory、Commit 後取得、滿格強制替換、跨局保留與新場重置。嗆司Maker 每局第一次形成新聽牌時 +5 本局分數；Restart 會重新建立該局觸發狀態。
 
-口袋系列可在摸牌階段主動使用，將一張已正式取得的普通麻將替換成指定國字牌。若指定牌已正式取得則不可使用。成功替換不增加摸牌張數，會同步更新棋盤、已取得集合、手牌順序與剩餘牌池，重新計算連線／聽牌／牌型，且 Item 立即消失。大吉／小吉／小凶／大凶的權重調整，以及免洗護身符抵銷負面局中事件，保留至 Phase 1-E 完整整合。
+口袋系列可在摸牌階段主動使用，將一張已正式取得的普通麻將替換成指定國字牌。若指定牌已正式取得則不可使用。成功替換不增加摸牌張數，會同步更新棋盤、已取得集合、手牌順序與剩餘牌池，重新計算連線／聽牌／牌型，且 Item 立即消失。Phase 1-E 已整合籤的動態權重與免洗護身符攔截。
 
 ## 10. 場中下注事件池
 
@@ -172,9 +172,9 @@ Phase 1-C 已將珠珠寶貝與當地球隊贏球的第 8／13 張 Constraint �
 
 「老闆突然加碼」已從局中事件池移除，場中特殊事件「老闆加碼」是目前唯一來源。
 
-大吉／小吉／小凶／大凶只影響局中事件池中的好事件與壞事件，不影響中立事件、場中事件、Item 抽取、下注事件或特殊事件。此權重效果將於 Phase 1-E 接入。
+大吉／小吉／小凶／大凶只影響局中事件池中的好事件與壞事件，不影響中立事件、場中事件、Item 抽取、下注事件或特殊事件。此權重效果已於 Phase 1-E 接入。
 
-## 13. Phase 1-A～1-D 現行基線
+## 13. Phase 1-A～1-E 現行基線
 
 Phase 1-A 已完成：
 
@@ -184,8 +184,44 @@ Phase 1-A 已完成：
 - `TEST1129` 與固定測試劇本已完整移除；所有玩家名稱皆走正常 RNG。
 - 玩家可見的分數相關文字已統一使用「分數」或「分」。
 
-程式內部 `score`、`rawPoints` 等名稱維持原狀，避免無必要的大規模 refactor。Phase 1-C 已接入 14／16 張特殊局與正式場中事件；Phase 1-D 已接入 Item 基礎系統、嗆司Maker、口袋系列與按住查看 34 張普通牌型。Item 的局中事件權重／護盾整合屬 Phase 1-E，小遊戲仍屬 Phase 2。
+程式內部 `score`、`rawPoints` 等名稱維持原狀，避免無必要的大規模 refactor。Phase 1-C 已接入 14／16 張特殊局與正式場中事件；Phase 1-D 已接入 Item 基礎系統、嗆司Maker、口袋系列與按住查看 34 張普通牌型。Phase 1-E 已完成 Item 的局中事件權重／護盾整合，小遊戲仍屬 Phase 2。
 
 Phase 1-B 另建立 PRE_ROUND selection／commit transaction 與 `round.config`。舊下注 UI 已退出正常 Gameplay，新局不會帶入舊下注；既有 settlement helper 暫時保留以降低本階段重構風險。
 
 Phase 1-C 以單一 committed BET Event 取代舊 Checkbox 多重下注，並安全移除只服務舊下注入口的 definitions／helpers。下注統計欄位延續使用，但由正式場中下注結算更新。
+
+## 14. Phase 1-E 加權、運勢與護身符
+
+### PRE_ROUND Weighted Selection
+
+Pool 保留 16 個唯一 Event ID。9 個 BET、6 個 SPECIAL 各權重 1；唯一「神秘禮物到來」代表整個 ITEM_DEFINITIONS，虛擬權重為其 length，目前 10，第一抽總權重為 25。每抽出一個選項，就從候選池移除整個定義，再抽下一張，共三張。不建立重複神秘禮物。
+
+同一組可全為 BET 或 SPECIAL，ITEM 最多一張；跨局可重複，Skip 永遠獨立於 Pool。第一抽 ITEM 機率是 10/25 = 40%；整組出現 ITEM 的機率為 1 − (15/25 × 14/24 × 13/23)，約 80.22%，不保證每局出現。Phase 1-D 等權三選一為 3/16 = 18.75%。槓桿、選項 UI 與 Commit transaction 不變。
+
+### Fortune Score 與 V1 Modifier
+
+每次從 game.items 將所有籤相加：大吉 +2、小吉 +1、小凶 −1、大凶 −2，非籤道具貢獻 0。可持有多張、同方向相加、反方向抵銷。例如大吉＋大凶 = 0、大吉＋小凶 = +1、小吉＋大凶 = −1、大吉＋小吉 = +3、大凶＋小凶 = −3。原始 score 可超過 ±3，僅查倍率時 Clamp 到 −3～+3。
+
+| fortuneScore（Clamp 後） | POSITIVE | NEGATIVE | NEUTRAL |
+|---:|---:|---:|---:|
+| +3 | 4 | 0.25 | 1 |
+| +2 | 2.5 | 0.5 | 1 |
+| +1 | 1.5 | 0.75 | 1 |
+| 0 | 1 | 1 | 1 |
+| −1 | 0.75 | 1.5 | 1 |
+| −2 | 0.5 | 2.5 | 1 |
+| −3 | 0.25 | 4 | 1 |
+
+每次局中抽取以 effectiveWeight = event.weight × fortuneModifier 計算，不寫回 EVENT_DEFINITIONS.weight，不累乘、不保存 Fortune snapshot。取得、替換、消耗後下一抽立即反映 inventory；Restart 亦然。所有 enabled 的正權重事件仍可抽中；大凶不禁止好事件，大吉不禁止壞事件。
+
+五條誤、偷天換日、棒球 Restart 及所有 NEUTRAL 的 effectiveWeight 永遠等於 base weight。這不代表 NEUTRAL 的最終百分比固定，因為整池總權重會改變。正常 Gameplay 道具描述保留氣氛文字，不顯示精確倍率。
+
+### 免洗護身符攔截
+
+只攔截 NEGATIVE 局中事件：Draw → 查定義與 sentiment → 檢查護身符 → 消耗一個並取消 handler，否則照常執行。判定依 sentiment，不列舉 Event ID；停電正式歸為 NEGATIVE。
+
+成功時 Reveal 顯示「免洗護身符發動！」、被擋事件名稱與消耗提示；Inventory 當下移除一個，空出一格。多個護身符一次只消耗一個；同一次 Reveal 重入不重抽、不重複觸發。被擋事件仍計入抽中事件分類次數，但不計入原事件造成的分數／局數／移牌／提前結束效果。
+
+瓦斯桶爆炸在 END_GAME handler 前被擋，不扣剩餘局數、不 Game Over；停電在 END_ROUND 前被擋，不提前結算；故意不小心被擋不移牌。按「繼續」回正常摸牌；若已到最後一張，仍依原本正常局末／BONUS 流程前進。
+
+POSITIVE、NEUTRAL、BET 失敗、PRE_ROUND SPECIAL、下注扣分、槓桿、道具替換與未來小遊戲不觸發護身符。Shield 不增扣分、不額外消耗局數。棒球 Restart 保留目前 inventory，已耗護身符不復活，未耗者保留。本局與 BET delta 可為負數，總分最低 0。

@@ -1,6 +1,6 @@
 # MoMaJohnPlus Implementation Plan
 
-本計畫描述 MoMaJohnPlus 的分階段導入順序。Phase 0、Phase 1-A、Phase 1-B、Phase 1-C 與 Phase 1-D 已完成；Phase 1-E 以後均為 **Planned / 尚未實作**。
+本計畫描述 MoMaJohnPlus 的分階段導入順序。Phase 0、Phase 1-A、Phase 1-B、Phase 1-C、Phase 1-D 與 Phase 1-E 已完成；Phase 2 以後均為 **Planned / 尚未實作**。
 
 ## Phase 0 — Project Identity & Documentation Baseline
 
@@ -53,14 +53,16 @@ Phase 0 不修改 Gameplay 行為。
 - 接入嗆司Maker每局首次聽牌效果與三個口袋系列主動替換效果。
 - 建立「道具 / 狀態」入口及按住「已抽牌型」即時總覽。
 - PRE_ROUND 可明確放棄場中事件，仍能獨立選擇合法槓桿，並建立 `NONE` config snapshot。
-- 籤詩局中事件機率及免洗護身符抵銷保留至 Phase 1-E。
+- 籤詩局中事件機率及免洗護身符抵銷已於 Phase 1-E 完成。
 
-### Phase 1-E — 局中事件重整與 Regression（Planned / 尚未實作）
+### Phase 1-E — 局中事件重整與 Regression（已完成，待人工 Playtest）
 
-- 重新分類局中事件。
-- 將籤詩效果接入好／壞局中事件機率。
-- 接入免洗護身符及瓦斯桶爆炸抵銷。
-- 完成局中事件、Restart、BONUS、GAME OVER 與 Item 交互 Regression。
+- PRE_ROUND 採不放回加權抽取：BET 9、SPECIAL 6 各權重 1，唯一 ITEM 虛擬權重為 `ITEM_DEFINITIONS.length`（目前 10），Skip 不入池。
+- Fortune score：大吉 +2、小吉 +1、小凶 −1、大凶 −2，可抵銷與疊加；V1 倍率查表時 Clamp 到 ±3。
+- 每次局中事件抽取都從目前 inventory 計算 effectiveWeight；base weight 保持不變，NEUTRAL modifier 永遠為 1。
+- 免洗護身符在第一個 NEGATIVE handler 前攔截並消耗一個，包含瓦斯桶爆炸；停電歸為 NEGATIVE 並可攔截。
+- Restart 保留目前 inventory，不恢復已消耗護身符，運勢在下一次抽取時重新計算。
+- 完成局中事件、Restart、BONUS、GAME OVER 與 Item 交互 Regression，並新增固定 RNG 的 `tests/phase1e.test.js`。
 
 ## Phase 2 — Mini-game Integration Skeleton
 

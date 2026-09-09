@@ -35,17 +35,27 @@ const PRE_ROUND_EVENT_DEFINITIONS = Object.freeze([
 ]);
 
 const ITEM_DEFINITIONS = Object.freeze([
-  Object.freeze({ id: "great-fortune", title: "大吉的籤", type: "PASSIVE", description: "今晚好像會非常幸運……", integration: "PHASE_1_E" }),
-  Object.freeze({ id: "small-fortune", title: "小吉的籤", type: "PASSIVE", description: "今晚好像會比較幸運……", integration: "PHASE_1_E" }),
-  Object.freeze({ id: "small-misfortune", title: "小凶的籤", type: "PASSIVE", description: "今晚似乎有點不妙……", integration: "PHASE_1_E" }),
-  Object.freeze({ id: "great-misfortune", title: "大凶的籤", type: "PASSIVE", description: "今晚似乎特別不妙……", integration: "PHASE_1_E" }),
+  Object.freeze({ id: "great-fortune", title: "大吉的籤", type: "PASSIVE", description: "今晚好像會非常幸運……", fortuneScore: 2 }),
+  Object.freeze({ id: "small-fortune", title: "小吉的籤", type: "PASSIVE", description: "今晚好像會比較幸運……", fortuneScore: 1 }),
+  Object.freeze({ id: "small-misfortune", title: "小凶的籤", type: "PASSIVE", description: "今晚似乎有點不妙……", fortuneScore: -1 }),
+  Object.freeze({ id: "great-misfortune", title: "大凶的籤", type: "PASSIVE", description: "今晚似乎特別不妙……", fortuneScore: -2 }),
   Object.freeze({ id: "chance-maker", title: "嗆司Maker", type: "PASSIVE", description: "每局第一次聽牌時，額外 +5 本局分數。" }),
   Object.freeze({ id: "empty-cup", title: "喝完的飲料杯", type: "PASSIVE", description: "沒有任何效果，但會占用一格道具欄。" }),
-  Object.freeze({ id: "disposable-charm", title: "免洗護身符", type: "AUTO", description: "未來可擋下第一個負面局中事件。", integration: "PHASE_1_E" }),
+  Object.freeze({ id: "disposable-charm", title: "免洗護身符", type: "AUTO", description: "自動擋下第一個負面局中事件，發動後消失。" }),
   Object.freeze({ id: "pocket-green", title: "口袋中的發", type: "ACTIVE", description: "將一張已取得普通麻將換成發。", targetTileId: "green" }),
   Object.freeze({ id: "pocket-red", title: "口袋中的中", type: "ACTIVE", description: "將一張已取得普通麻將換成中。", targetTileId: "red" }),
   Object.freeze({ id: "pocket-white", title: "口袋中的白板", type: "ACTIVE", description: "將一張已取得普通麻將換成白。", targetTileId: "white" })
 ]);
+
+const FORTUNE_MODIFIERS = Object.freeze({
+  "-3": Object.freeze({ POSITIVE: 0.25, NEGATIVE: 4 }),
+  "-2": Object.freeze({ POSITIVE: 0.5, NEGATIVE: 2.5 }),
+  "-1": Object.freeze({ POSITIVE: 0.75, NEGATIVE: 1.5 }),
+  "0": Object.freeze({ POSITIVE: 1, NEGATIVE: 1 }),
+  "1": Object.freeze({ POSITIVE: 1.5, NEGATIVE: 0.75 }),
+  "2": Object.freeze({ POSITIVE: 2.5, NEGATIVE: 0.5 }),
+  "3": Object.freeze({ POSITIVE: 4, NEGATIVE: 0.25 })
+});
 
 const EVENT_DEFINITIONS = [
   { id: "boss-happy", title: "老闆今天心情很好", story: "今天生意不錯，老闆順手多送你一些分數。", category: "NORMAL", sentiment: "POSITIVE", effectType: "ADD_SCORE", value: 2, weight: 16, displayEffect: "+2 分", enabled: true },
@@ -68,7 +78,7 @@ const EVENT_DEFINITIONS = [
   { id: "no-invite", title: "不揪被抓到", story: "被朋友發現來夜市竟然沒有揪，只好分他一局去玩。", category: "SPECIAL", sentiment: "NEGATIVE", effectType: "SUB_ROUNDS", value: 1, weight: 6, displayEffect: "失去 1 次", enabled: true },
   { id: "explosion", title: "隔壁瓦斯桶爆炸", story: "碰！！！隔壁攤位傳來巨響，所有人拔腿就跑！", category: "SPECIAL", sentiment: "NEGATIVE", effectType: "END_GAME", value: true, weight: 1, displayEffect: "完成本局結算後 GAME OVER", enabled: true },
   { id: "on-purpose-accident", title: "故意不小心", story: "老闆趁你低頭時，偷偷拿走一張牌。", category: "SPECIAL", sentiment: "NEGATIVE", effectType: "REMOVE_DRAWN_TILE", value: 1, weight: 4, displayEffect: "隨機移除一張已取得普通麻將", enabled: true },
-  { id: "blackout", title: "停電", story: "啪！整條夜市突然停電，老闆摸黑宣布這局到此為止。", category: "SPECIAL", sentiment: "NEUTRAL", effectType: "END_ROUND", value: true, weight: 4, displayEffect: "立即結束本局並結算", enabled: true },
+  { id: "blackout", title: "停電", story: "啪！整條夜市突然停電，老闆摸黑宣布這局到此為止。", category: "SPECIAL", sentiment: "NEGATIVE", effectType: "END_ROUND", value: true, weight: 4, displayEffect: "立即結束本局並結算", enabled: true },
   { id: "five-tiao-mistake", title: "五條誤", story: "老闆拿起牌看了一眼：『啊？這不是五條喔？』", category: "SPECIAL", sentiment: "NEUTRAL", effectType: "REPLACE_DRAWN_TILE", value: { from: "suo-5", targetSuit: "suo" }, weight: 5, displayEffect: "將五條換成另一張未取得條子", enabled: true },
   { id: "sleight-of-hand", title: "偷天換日", story: "老闆手一晃，場上一張牌竟然悄悄換了位置。", category: "SPECIAL", sentiment: "NEUTRAL", effectType: "SWAP_DRAWN_TILE", value: 1, weight: 5, displayEffect: "已取得牌與未取得普通牌互換", enabled: true },
   { id: "baseball-reset", title: "隔壁棒球攤的球飛過來", story: "球突然飛過來把桌上的牌打亂，只好重新擺桌。", category: "SPECIAL", sentiment: "NEUTRAL", effectType: "RESTART_ROUND", value: true, weight: 4, displayEffect: "本局重新開始，不重扣次數", enabled: true }
