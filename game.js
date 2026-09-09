@@ -26,7 +26,7 @@ const GAME_TILES = [...CORE_TILES,
 const elements = Object.fromEntries([
   "board", "draw-stack", "total-score", "round-score", "rounds-display", "player-display",
   "player-name-input", "player-name-error", "help-button", "main-menu-button", "start-screen", "game-shell", "play-area",
-  "item-status-button", "tile-peek-button", "tile-overview-overlay", "tile-overview-grid",
+  "item-status-button", "tile-peek-button", "tile-overview-overlay", "tile-overview-grid", "tile-overview-close",
   "pre-round-panel", "pre-round-event-options", "pre-round-skip-button", "pre-round-leverage-options", "pre-round-error", "start-round-button",
   "final-waiting-overlay", "final-waiting-title", "final-waiting-missing",
   "bonus-modal", "bonus-waiting", "bonus-instruction", "bonus-count", "bonus-grid", "bonus-result",
@@ -381,8 +381,17 @@ function currentRoundStatusText() {
   return event.title;
 }
 
+function pocketReplacementCandidates(item) {
+  if (!item?.targetTileId) return [];
+  return CORE_TILES.filter(tile => tile.id !== item.targetTileId && isOfficiallyDrawn(tile.id));
+}
+
 function canUsePocketItem(item) {
-  return game.state === GAME_STATES.DRAWING && !game.busy && !isOfficiallyDrawn(item.targetTileId) && CORE_TILES.some(tile => tile.id !== item.targetTileId && isOfficiallyDrawn(tile.id));
+  return game.state === GAME_STATES.DRAWING && !game.busy && !isOfficiallyDrawn(item.targetTileId) && pocketReplacementCandidates(item).length > 0;
+}
+
+function canAttemptPocketItemUse(item) {
+  return game.state === GAME_STATES.DRAWING && !game.busy && !isOfficiallyDrawn(item.targetTileId);
 }
 
 function openItemStatus() {
@@ -391,10 +400,10 @@ function openItemStatus() {
   const slots = Array.from({ length: 3 }, (_, index) => {
     const item = itemById(game.items[index]);
     if (!item) return `<article class="item-slot empty"><b>空道具格</b><span>尚未取得道具</span></article>`;
-    const action = item.type === "ACTIVE" ? `<button type="button" data-use-item-index="${index}" ${canUsePocketItem(item) ? "" : "disabled"}>使用</button>` : "";
+    const action = item.type === "ACTIVE" ? `<button type="button" data-use-item-index="${index}" ${canAttemptPocketItemUse(item) ? "" : "disabled"}>使用</button>` : "";
     return `<article class="item-slot"><b>${item.title}</b><span>${item.description}</span>${action}</article>`;
   }).join("");
-  openModal({ icon: "具", kicker: "ITEM / STATUS", title: "道具 / 狀態", body: `<div class="item-status"><section><h3>目前道具</h3><div class="item-slots">${slots}</div></section><section><h3>目前狀態</h3><p>${currentRoundStatusText()}</p></section><small>牌型請按住右側「已抽牌型」查看</small></div>`, actions: [{ label: "關閉", action: closeItemStatus }] });
+  openModal({ icon: "具", kicker: "ITEM / STATUS", title: "道具 / 狀態", body: `<div class="item-status"><section><h3>目前道具</h3><div class="item-slots">${slots}</div></section><section><h3>目前狀態</h3><p>${currentRoundStatusText()}</p></section><small>點一下右側「已抽牌型」即可查看牌型</small></div>`, actions: [{ label: "關閉", action: closeItemStatus }] });
   elements.modalBody.querySelectorAll("[data-use-item-index]").forEach(button => button.addEventListener("click", () => beginPocketItemUse(Number(button.dataset.useItemIndex))));
 }
 
@@ -402,10 +411,14 @@ function closeItemStatus() { game.uiOverlayOpen = false; closeModal(); }
 
 function beginPocketItemUse(index) {
   const item = itemById(game.items[index]);
-  if (!item?.targetTileId || !canUsePocketItem(item)) return false;
-  const candidates = CORE_TILES.filter(tile => tile.id !== item.targetTileId && isOfficiallyDrawn(tile.id));
+  if (!item?.targetTileId || !canAttemptPocketItemUse(item)) return false;
+  const candidates = pocketReplacementCandidates(item);
+  if (!candidates.length) {
+    notifyScore("目前沒有可以替換的牌");
+    return false;
+  }
   const target = GAME_TILES.find(tile => tile.id === item.targetTileId);
-  openModal({ icon: "換", kicker: item.title, title: `選一張牌換成${target.label}`, body: `<p>選擇一張已取得的普通麻將進行替換。</p><div class="item-tile-options">${candidates.map(tile => `<button type="button" class="hand-tile" data-item-source-id="${tile.id}" aria-label="${tile.label}">${tileContent(tile)}</button>`).join("")}</div>`, actions: [{ label: "取消", className: "secondary", action: cancelPocketItemUse }] });
+  openModal({ icon: "換", kicker: item.title, title: `選一張牌換成${target.label}`, body: `<p>選擇一張已取得的普通麻將進行替換。</p><div class="item-tile-options">${candidates.map(tile => `<button type="button" class="hand-tile revealed" data-item-source-id="${tile.id}" aria-label="${tile.label}">${tileContent(tile)}</button>`).join("")}</div>`, actions: [{ label: "取消", className: "secondary", action: cancelPocketItemUse }] });
   elements.modalBody.querySelectorAll("[data-item-source-id]").forEach(button => button.addEventListener("click", () => completePocketItemUse(index, button.dataset.itemSourceId)));
   return true;
 }
@@ -453,17 +466,25 @@ function renderTileOverview() {
   elements.tileOverviewGrid.innerHTML = groups.map(([title, tiles]) => `<section><h3>${title}</h3><div>${tiles.map(tile => `<span class="overview-tile${isOfficiallyDrawn(tile.id) ? " acquired" : ""}" aria-label="${tile.label}${isOfficiallyDrawn(tile.id) ? "，已取得" : "，未取得"}">${tile.glyph}</span>`).join("")}</div></section>`).join("");
 }
 
-function showTileOverview(event) {
+function showTileOverview() {
   if (game.state !== GAME_STATES.DRAWING || game.busy || game.uiOverlayOpen) return;
-  event.currentTarget.setPointerCapture?.(event.pointerId);
   renderTileOverview();
+  game.uiOverlayOpen = true;
   elements.tileOverviewOverlay.classList.add("open");
   elements.tileOverviewOverlay.setAttribute("aria-hidden", "false");
+  updateHUD();
+  elements.tileOverviewClose.focus();
 }
 
 function hideTileOverview() {
+  const wasOpen = elements.tileOverviewOverlay.classList.contains("open");
   elements.tileOverviewOverlay.classList.remove("open");
   elements.tileOverviewOverlay.setAttribute("aria-hidden", "true");
+  if (wasOpen) {
+    game.uiOverlayOpen = false;
+    updateHUD();
+    elements.tilePeekButton.focus();
+  }
 }
 
 function tileContent(tile) {
@@ -1064,6 +1085,7 @@ function settleRoundPoints() {
 }
 
 function endRound(hadBonus, bonusSuccess, forceGameOver = false) {
+  hideTileOverview();
   game.state = GAME_STATES.ROUND_END;
   const totalBefore = game.score;
   settleRoundPoints();
@@ -1097,6 +1119,7 @@ function animateRoundTotal(from, to) {
 }
 
 function showGameOver() {
+  hideTileOverview();
   game.state = GAME_STATES.GAME_OVER;
   game.busy = false;
   recordRoundHighs();
@@ -1208,8 +1231,10 @@ function notifyScore(text, options = {}) {
 }
 
 function openModal({ icon, kicker, title, body, actions }) {
+  const hasDecorativeSingleCharacterIcon = /^\p{Script=Han}$/u.test(icon);
   elements.modalIcon.classList.remove("deciding");
-  elements.modalIcon.textContent = icon;
+  elements.modalIcon.classList.toggle("hidden", hasDecorativeSingleCharacterIcon);
+  elements.modalIcon.textContent = hasDecorativeSingleCharacterIcon ? "" : icon;
   elements.modalKicker.textContent = kicker;
   elements.modalTitle.textContent = title;
   elements.modalBody.innerHTML = body;
@@ -1370,6 +1395,7 @@ function startGame() {
 }
 
 function showStartScreen() {
+  hideTileOverview();
   closeModal();
   closeBonusModal();
   elements.gameShell.classList.add("hidden");
@@ -1403,8 +1429,8 @@ elements.drawStack.addEventListener("click", drawTile);
 elements.mainMenuButton.addEventListener("click", requestMainMenu);
 elements.startRoundButton.addEventListener("click", commitRoundConfiguration);
 elements.preRoundSkipButton.addEventListener("click", selectPreRoundSkip);
-elements.tilePeekButton.addEventListener("pointerdown", showTileOverview);
-["pointerup", "pointercancel", "pointerleave", "lostpointercapture"].forEach(type => elements.tilePeekButton.addEventListener(type, hideTileOverview));
+elements.tilePeekButton.addEventListener("click", showTileOverview);
+elements.tileOverviewClose.addEventListener("click", hideTileOverview);
 document.querySelector("#start-game-button").addEventListener("click", startGame);
 elements.playerNameInput.addEventListener("input", () => {
   elements.playerNameError.textContent = "";

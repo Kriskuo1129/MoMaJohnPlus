@@ -26,10 +26,15 @@ class FakeElement {
     this.value = "";
     this.disabled = false;
     this._innerHTML = "";
+    this.listeners = new Map();
   }
   set innerHTML(value) { this._innerHTML = value; }
   get innerHTML() { return this._innerHTML; }
-  addEventListener() {}
+  addEventListener(type, listener) {
+    if (!this.listeners.has(type)) this.listeners.set(type, []);
+    this.listeners.get(type).push(listener);
+  }
+  dispatch(type) { (this.listeners.get(type) ?? []).forEach(listener => listener({ currentTarget: this })); }
   append(child) { this.children.push(child); }
   appendChild(child) { this.append(child); }
   replaceChildren(...children) { this.children = children; }
@@ -39,7 +44,6 @@ class FakeElement {
   setAttribute(name, value) { this.attributes[name] = String(value); }
   focus() {}
   remove() {}
-  setPointerCapture() {}
   getBoundingClientRect() { return { width: 100, height: 50, left: 0, top: 0 }; }
   get offsetWidth() { return 100; }
 }
@@ -67,7 +71,9 @@ const context = vm.createContext({
 });
 const root = path.resolve(__dirname, "..");
 const pageHtml = fs.readFileSync(path.join(root, "index.html"), "utf8");
-const source = `${fs.readFileSync(path.join(root, "game-config.js"), "utf8")}\n${fs.readFileSync(path.join(root, "game.js"), "utf8")}\n
+const gameSource = fs.readFileSync(path.join(root, "game.js"), "utf8");
+const styleSource = fs.readFileSync(path.join(root, "style.css"), "utf8");
+const source = `${fs.readFileSync(path.join(root, "game-config.js"), "utf8")}\n${gameSource}\n
 globalThis.phase1DTest = {
   definitions: ITEM_DEFINITIONS,
   preRoundDefinitions: PRE_ROUND_EVENT_DEFINITIONS,
@@ -178,20 +184,63 @@ globalThis.phase1DTest = {
     game.round.drawIndex = 4;
     game.state = GAME_STATES.DRAWING;
     const beforeIndex = game.round.drawIndex;
+    const originalRandom = Math.random;
+    Math.random = () => { throw new Error("Pocket replacement must not use random selection"); };
     const used = completePocketItemUse(0, sourceTileId);
+    Math.random = originalRandom;
     const order = [...game.round.hand, ...game.round.remaining].map(tile => tile.id);
     return { used, beforeIndex, afterIndex: game.round.drawIndex, items: [...game.items], drawn: [...game.round.drawn], order, board: game.round.board.map(tile => tile.id), target: item.targetTileId };
+  },
+  pocketSelection(itemId, drawnIds, selectedId = null) {
+    game = freshGameState("TEST");
+    game.items = [itemId];
+    game.round = createRound();
+    game.round.board = [...GAME_TILES];
+    game.round.hand = GAME_TILES.slice(0, 15);
+    game.round.remaining = GAME_TILES.slice(15);
+    drawnIds.forEach(id => game.round.drawn.add(id));
+    game.round.selectedBonusTiles = [GAME_TILES.find(tile => tile.id === "tong-9")];
+    game.state = GAME_STATES.DRAWING;
+    game.uiOverlayOpen = true;
+    const item = itemById(itemId);
+    const candidates = pocketReplacementCandidates(item).map(tile => tile.id);
+    const opened = beginPocketItemUse(0);
+    const modal = { body: elements.modalBody.innerHTML, title: elements.modalTitle.textContent, icon: elements.modalIcon.textContent };
+    const before = { items: [...game.items], drawn: [...game.round.drawn], order: [...game.round.hand, ...game.round.remaining].map(tile => tile.id) };
+    if (selectedId) completePocketItemUse(0, selectedId); else cancelPocketItemUse();
+    return { candidates, opened, modal, before, after: { items: [...game.items], drawn: [...game.round.drawn], order: [...game.round.hand, ...game.round.remaining].map(tile => tile.id) }, target: item.targetTileId };
+  },
+  pocketWithoutCandidate() {
+    game = freshGameState("TEST");
+    game.items = ["pocket-red"];
+    game.round = createRound();
+    game.state = GAME_STATES.DRAWING;
+    game.uiOverlayOpen = true;
+    closeModal();
+    const opened = beginPocketItemUse(0);
+    return { opened, items: [...game.items], drawn: [...game.round.drawn], modalOpen: elements.modal.classList.contains("open"), toast: elements.toastStack.children.at(-1)?.textContent };
   },
   overview() {
     game = freshGameState("TEST");
     game.round = createRound();
     game.round.drawn.add("wan-1");
     game.state = GAME_STATES.DRAWING;
-    showTileOverview({ currentTarget: document.createElement("button"), pointerId: 1 });
+    const stateBefore = game.state;
+    elements.tilePeekButton.dispatch("click");
     const html = elements.tileOverviewGrid.innerHTML;
     const opened = elements.tileOverviewOverlay.classList.contains("open");
-    hideTileOverview();
-    return { html, opened, closed: !elements.tileOverviewOverlay.classList.contains("open"), hidden: elements.tileOverviewOverlay.attributes["aria-hidden"] };
+    const backgroundLocked = elements.drawStack.disabled && elements.itemStatusButton.disabled && elements.helpButton.disabled;
+    ["pointerup", "pointercancel", "pointerleave", "lostpointercapture"].forEach(type => elements.tilePeekButton.dispatch(type));
+    const stayedOpen = elements.tileOverviewOverlay.classList.contains("open");
+    elements.tileOverviewClose.dispatch("click");
+    const closed = !elements.tileOverviewOverlay.classList.contains("open");
+    const stateAfter = game.state;
+    elements.tilePeekButton.dispatch("click");
+    game.round.config = Object.freeze({ formalDrawCount: 15, leverageMultiplier: 1, finalMultiplier: 1 });
+    game.round.preRound.eventOptions = [];
+    game.round.started = true;
+    restartCurrentRound();
+    return { html, opened, backgroundLocked, stayedOpen, closed, stateBefore, stateAfter, uiUnlocked: !game.uiOverlayOpen, restartClosed: !elements.tileOverviewOverlay.classList.contains("open"), hidden: elements.tileOverviewOverlay.attributes["aria-hidden"] };
   },
   floorScore() {
     game = freshGameState("TEST");
@@ -298,13 +347,60 @@ for (const [itemId, target] of [["pocket-green", "green"], ["pocket-red", "red"]
 assert.equal(api.pocket("pocket-green", "wan-1", true).used, false);
 assert.equal(api.pocket("pocket-green", "event-1").used, false);
 
+const selectedPocket = api.pocketSelection("pocket-red", ["wan-1", "wan-5", "event-1"], "wan-5");
+assert.equal(JSON.stringify(selectedPocket.candidates), '["wan-1","wan-5"]');
+assert.equal(selectedPocket.opened, true);
+assert.match(selectedPocket.modal.title, /選一張牌換成中/);
+assert.equal(selectedPocket.modal.icon, "");
+assert.match(selectedPocket.modal.body, /class="hand-tile revealed"[^>]*data-item-source-id="wan-1"/);
+assert.match(selectedPocket.modal.body, /class="hand-tile revealed"[^>]*data-item-source-id="wan-5"/);
+assert.doesNotMatch(selectedPocket.modal.body, /data-item-source-id="event-1"/);
+assert.doesNotMatch(selectedPocket.modal.body, /data-item-source-id="tong-9"/);
+assert.equal(selectedPocket.after.items.length, 0);
+assert.equal(selectedPocket.after.drawn.includes("wan-1"), true);
+assert.equal(selectedPocket.after.drawn.includes("wan-5"), false);
+assert.equal(selectedPocket.after.drawn.includes(selectedPocket.target), true);
+assert.equal(selectedPocket.after.order.includes("wan-5"), true);
+assert.equal(selectedPocket.after.order.slice(15).includes(selectedPocket.target), false);
+
+const cancelledPocket = api.pocketSelection("pocket-white", ["wan-1", "wan-5"]);
+assert.equal(cancelledPocket.opened, true);
+assert.equal(JSON.stringify(cancelledPocket.after), JSON.stringify(cancelledPocket.before));
+
+const emptyPocket = api.pocketWithoutCandidate();
+assert.equal(emptyPocket.opened, false);
+assert.equal(JSON.stringify(emptyPocket.items), '["pocket-red"]');
+assert.equal(JSON.stringify(emptyPocket.drawn), "[]");
+assert.equal(emptyPocket.modalOpen, false);
+assert.equal(emptyPocket.toast, "目前沒有可以替換的牌");
+
 const overview = api.overview();
 assert.equal(overview.opened, true);
+assert.equal(overview.backgroundLocked, true);
+assert.equal(overview.stayedOpen, true);
 assert.equal(overview.closed, true);
+assert.equal(overview.stateBefore, "DRAWING");
+assert.equal(overview.stateAfter, "DRAWING");
+assert.equal(overview.uiUnlocked, true);
+assert.equal(overview.restartClosed, true);
 assert.equal(overview.hidden, "true");
 assert.equal((overview.html.match(/class="overview-tile/g) || []).length, 34);
 assert.equal(overview.html.includes("事件 A"), false);
 assert.match(overview.html, /overview-tile acquired[^>]*aria-label="一萬，已取得"/);
+assert.match(pageHtml, /id="tile-overview-close"[^>]*>關閉<\/button>/);
+assert.doesNotMatch(gameSource, /tilePeekButton\.addEventListener\("pointerdown"/);
+for (const type of ["pointerup", "pointercancel", "pointerleave", "lostpointercapture"]) {
+  assert.doesNotMatch(gameSource, new RegExp(`tilePeekButton\\.addEventListener\\([^\\n]*${type}`));
+}
+assert.doesNotMatch(gameSource, /setPointerCapture|releasePointerCapture/);
+assert.match(gameSource, /tilePeekButton\.addEventListener\("click", showTileOverview\)/);
+assert.match(gameSource, /tileOverviewClose\.addEventListener\("click", hideTileOverview\)/);
+assert.match(styleSource, /\.tile-overview-overlay\.open\{display:grid;pointer-events:auto\}/);
+assert.match(pageHtml, /<h1>摸麻將Plus<\/h1>/);
+assert.doesNotMatch(pageHtml, /MoMaJohnPlus/);
+assert.match(styleSource, /\.player-name-field input\{[^}]*text-align:center/);
+assert.match(gameSource, /hasDecorativeSingleCharacterIcon = \/\^\\p\{Script=Han\}\$\/u/);
+assert.match(gameSource, /modalIcon\.textContent = hasDecorativeSingleCharacterIcon \? "" : icon/);
 
 assert.equal(JSON.stringify(api.floorScore()), JSON.stringify({ score: 0, delta: -5 }));
 

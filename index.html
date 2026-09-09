@@ -4,17 +4,17 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#120b18">
-  <title>MoMaJohnPlus｜台灣夜市摸麻將</title>
+  <title>摸麻將Plus｜台灣夜市摸麻將</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <section id="start-screen" class="mode-select">
-    <div class="mode-select-card"><p>TAIWAN NIGHT MARKET</p><h1>MoMaJohnPlus</h1>
+    <div class="mode-select-card"><p>TAIWAN NIGHT MARKET</p><h1>摸麻將Plus</h1>
       <label class="player-name-field" for="player-name-input"><span>玩家名稱</span><input id="player-name-input" type="text" maxlength="12" autocomplete="nickname" placeholder="請輸入名稱"></label>
       <p id="player-name-error" class="player-name-error" role="alert" aria-live="polite"></p>
       <h2>台灣夜市摸麻將</h2>
       <div class="mode-options">
-        <button id="start-game-button" type="button"><b>開始遊戲</b><span>每局 15 張・事件牌・連線與牌型</span><small>輸入名稱後直接開始 MoMaJohnPlus</small></button>
+        <button id="start-game-button" type="button"><b>開始遊戲</b><span>每局 15 張・事件牌・連線與牌型</span><small>輸入名稱後直接開始摸麻將Plus</small></button>
       </div>
     </div>
   </section>
@@ -67,8 +67,9 @@
   </main>
 
   <div id="tile-overview-overlay" class="tile-overview-overlay" aria-hidden="true">
-    <div class="tile-overview-card" role="status" aria-label="已抽牌型快速檢視">
-      <p>QUICK PEEK</p><h2>已抽牌型</h2><div id="tile-overview-grid" class="tile-overview-grid"></div>
+    <div class="tile-overview-card" role="dialog" aria-modal="true" aria-labelledby="tile-overview-title">
+      <p>QUICK PEEK</p><h2 id="tile-overview-title">已抽牌型</h2><div id="tile-overview-grid" class="tile-overview-grid"></div>
+      <button id="tile-overview-close" class="guide-button" type="button">關閉</button>
     </div>
   </div>
 
