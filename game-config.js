@@ -15,6 +15,14 @@ const SCORE_CONFIG = Object.freeze({
   special: Object.freeze({ earlyWaiting: 5, lastTileFirstLine: 5 })
 });
 
+// Temporary / Phase 1-B only. Phase 1-C will replace these placeholders with
+// draw-ready equipment, bet, and special-event definitions from the same pool.
+const PRE_ROUND_EVENT_DEFINITIONS = Object.freeze([
+  Object.freeze({ id: "phase-1b-event-a", title: "測試場中事件 A", description: "Phase 1-B 測試事件，本局暫無效果。", type: "PLACEHOLDER" }),
+  Object.freeze({ id: "phase-1b-event-b", title: "測試場中事件 B", description: "Phase 1-B 測試事件，本局暫無效果。", type: "PLACEHOLDER" }),
+  Object.freeze({ id: "phase-1b-event-c", title: "測試場中事件 C", description: "Phase 1-B 測試事件，本局暫無效果。", type: "PLACEHOLDER" })
+]);
+
 const EVENT_DEFINITIONS = [
   { id: "boss-happy", title: "老闆今天心情很好", story: "今天生意不錯，老闆順手多送你一些分數。", category: "NORMAL", sentiment: "POSITIVE", effectType: "ADD_SCORE", value: 2, weight: 16, displayEffect: "+2 分", enabled: true },
   { id: "wrong-change", title: "老闆算錯錢", story: "老闆找錢找多了，而且他完全沒有發現。", category: "NORMAL", sentiment: "POSITIVE", effectType: "ADD_SCORE", value: 3, weight: 12, displayEffect: "+3 分", enabled: true },

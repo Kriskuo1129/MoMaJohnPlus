@@ -1,7 +1,7 @@
 # MoMaJohnPlus 遊戲設計規格
 
-> 狀態：Phase 1-A 基礎規則轉換已完成；其餘 Plus 功能仍為 Planned / 尚未實作。
-> 本文件定義 MoMaJohnPlus 的目標設計。現行 Gameplay 已採單一模式與 15 張正式牌基準，仍保留原始摸牌、連線、聽牌、事件、槓桿、下注、補牌及結算流程。
+> 狀態：Phase 1-A 與 Phase 1-B 已完成；其餘 Plus 功能仍為 Planned / 尚未實作。
+> 本文件定義 MoMaJohnPlus 的目標設計。現行 Gameplay 已採單一模式、15 張正式牌基準及 PRE_ROUND Commit Framework，仍保留原始摸牌、連線、聽牌、局中事件、補牌及結算流程。
 
 ## 1. 名詞定義
 
@@ -39,6 +39,19 @@
 
 按下「開牌局」前，玩家可以重新選擇場中事件與槓桿。按下後才確認場中事件、裝備、槓桿、剩餘局數、本局倍率、本局牌數及本局特殊規則。
 
+### Phase 1-B 現行實作
+
+- 每一局均先進入 `PRE_ROUND`，不能摸牌或觸發局中事件。
+- `round.preRound` 保存 temporary event/leverage selection；`round.config` 只在「開牌局」時建立。
+- 場中事件未選擇時，「開牌局」保持 Disabled。
+- 槓桿預設 ×1，僅剩餘局數足夠的選項可選；UI Disabled 與 Commit validation 同時保護。
+- 按下「開牌局」時一次性 Commit 並消耗槓桿局數，第一次摸牌不再扣局。
+- 同一局的 `round.committed` 防止 double commit。
+- Restart Current Round 沿用 committed config，不重回 PRE_ROUND、不重新扣局。
+- 補牌／事件新增的局數會由下一局 PRE_ROUND 重新計算槓桿可用性。
+
+Phase 1-B 的三張場中事件來自 `PRE_ROUND_EVENT_DEFINITIONS`，均為 **Temporary / Phase 1-B only** Placeholder，沒有 Gameplay 效果。正式場中下注、場中特殊及裝備事件尚未實作。
+
 ## 6. 槓桿
 
 | 槓桿 | 消耗局數 |
@@ -56,8 +69,8 @@
 - 標準正式牌數：15 張。
 - 最少正式牌數：14 張。
 - 最多正式牌數：16 張。
-- 第 8 張：小遊戲節點。
-- 第 13 張：小遊戲節點。
+- 第 8 張：Phase 2 建立 Mini-game Placeholder Skeleton（Planned / 尚未實作）。
+- 第 13 張：Phase 2 建立 Mini-game Placeholder Skeleton（Planned / 尚未實作）。
 - 最後一張必須永遠是普通抽牌，不得是小遊戲。
 
 海底撈月改為「本局最後一張正式牌完成第一條連線」。因此 14、15、16 張局分別在第 14、15、16 張判定。
@@ -66,7 +79,7 @@
 
 未來小遊戲：彈珠台、九宮格、記憶力、野球盤、娃娃機、小賭馬、刮刮樂。
 
-Phase 1 與 Phase 2 前期暫不真正實作遊戲內容，但第 8、13 張必須具備進入小遊戲動畫、小遊戲名稱顯示、Placeholder 流程、自動決定取得牌、獲得麻將牌動畫及返回主牌局。第 8、13 張原則上不能使用相同小遊戲。
+Phase 1 不要求建立小遊戲節點。第 8、13 張的 Mini-game Placeholder Skeleton 正式屬於 Phase 2，屆時應具備進入小遊戲動畫、小遊戲名稱顯示、Placeholder 流程、自動決定取得牌、獲得麻將牌動畫及返回主牌局；兩個節點原則上不能使用相同小遊戲。真正可操作的小遊戲內容留待後續階段實作。
 
 ## 9. 裝備池
 
@@ -156,7 +169,7 @@ Phase 1 與 Phase 2 前期暫不真正實作遊戲內容，但第 8、13 張必�
 
 大吉／小吉／小凶／大凶只影響局中事件池中的好事件與壞事件，不影響中立事件、場中事件、裝備抽取、下注事件或特殊事件。
 
-## 13. Phase 1-A 現行基線
+## 13. Phase 1-A～1-B 現行基線
 
 Phase 1-A 已完成：
 
@@ -167,3 +180,5 @@ Phase 1-A 已完成：
 - 玩家可見的分數相關文字已統一使用「分數」或「分」。
 
 程式內部 `score`、`rawPoints`、`betDelta` 等名稱維持原狀，避免無必要的大規模 refactor。14／16 張特殊局、場中事件、裝備與小遊戲仍為 Planned / 尚未實作。
+
+Phase 1-B 另建立 PRE_ROUND selection／commit transaction 與 `round.config`。舊下注 UI 已退出正常 Gameplay，新局不會帶入舊下注；既有 settlement helper 暫時保留以降低本階段重構風險。

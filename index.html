@@ -32,11 +32,28 @@
       </section>
     </header>
 
-    <section class="play-area">
+    <section id="pre-round-panel" class="pre-round-panel hidden" aria-labelledby="pre-round-title">
+      <header class="pre-round-header">
+        <p>PRE-ROUND</p>
+        <h2 id="pre-round-title">開局準備</h2>
+        <span>選擇場中事件與槓桿，按下開牌局後才會正式生效。</span>
+      </header>
+      <section class="pre-round-section" aria-labelledby="pre-round-event-title">
+        <h3 id="pre-round-event-title">場中事件 <small>Temporary / Phase 1-B only</small></h3>
+        <div id="pre-round-event-options" class="pre-round-event-options"></div>
+      </section>
+      <section class="pre-round-section" aria-labelledby="pre-round-leverage-title">
+        <h3 id="pre-round-leverage-title">開槓桿</h3>
+        <div id="pre-round-leverage-options" class="pre-round-leverage-options"></div>
+      </section>
+      <p id="pre-round-error" class="pre-round-error" role="alert" aria-live="polite"></p>
+      <button id="start-round-button" class="start-round-button" type="button" disabled>開牌局</button>
+    </section>
+
+    <section id="play-area" class="play-area hidden">
       <div id="board" class="board" role="grid" aria-label="六乘六麻將對獎盤"></div>
       <p id="message" class="message" aria-live="polite"></p>
       <section class="draw-zone" aria-label="摸牌操作">
-        <button id="leverage-button" class="leverage-button" type="button">下注</button>
         <button id="draw-stack" class="draw-button" type="button">摸牌 (15)</button>
       </section>
       <nav class="game-actions" aria-label="遊戲功能">
