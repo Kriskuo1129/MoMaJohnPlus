@@ -1,7 +1,7 @@
 # MoMaJohnPlus 遊戲設計規格
 
-> 狀態：Phase 1-A 與 Phase 1-B 已完成；其餘 Plus 功能仍為 Planned / 尚未實作。
-> 本文件定義 MoMaJohnPlus 的目標設計。現行 Gameplay 已採單一模式、15 張正式牌基準及 PRE_ROUND Commit Framework，仍保留原始摸牌、連線、聽牌、局中事件、補牌及結算流程。
+> 狀態：Phase 1-A～1-C 已完成；Phase 1-D 以後仍為 Planned / 尚未實作。
+> 本文件定義 MoMaJohnPlus 的目標設計。現行 Gameplay 已具備正式 PRE_ROUND Event Pool、場中下注／特殊事件及 14～16 張 dynamic round config。
 
 ## 1. 名詞定義
 
@@ -39,7 +39,7 @@
 
 按下「開牌局」前，玩家可以重新選擇場中事件與槓桿。按下後才確認場中事件、裝備、槓桿、剩餘局數、本局倍率、本局牌數及本局特殊規則。
 
-### Phase 1-B 現行實作
+### Phase 1-B～1-C 現行實作
 
 - 每一局均先進入 `PRE_ROUND`，不能摸牌或觸發局中事件。
 - `round.preRound` 保存 temporary event/leverage selection；`round.config` 只在「開牌局」時建立。
@@ -50,7 +50,7 @@
 - Restart Current Round 沿用 committed config，不重回 PRE_ROUND、不重新扣局。
 - 補牌／事件新增的局數會由下一局 PRE_ROUND 重新計算槓桿可用性。
 
-Phase 1-B 的三張場中事件來自 `PRE_ROUND_EVENT_DEFINITIONS`，均為 **Temporary / Phase 1-B only** Placeholder，沒有 Gameplay 效果。正式場中下注、場中特殊及裝備事件尚未實作。
+Phase 1-C 已將 Placeholder 替換為 `PRE_ROUND_EVENT_DEFINITIONS` 正式 Pool：每局隨機抽三個不同 ID，包含 9 個場中下注與 6 個場中特殊。下注只 Commit 一個、於局末獨立結算且不乘倍率；特殊事件會成為 immutable `round.config` 的本局規則 Snapshot。裝備抽取事件留待 Phase 1-D。
 
 ## 6. 槓桿
 
@@ -62,7 +62,7 @@ Phase 1-B 的三張場中事件來自 `PRE_ROUND_EVENT_DEFINITIONS`，均為 **T
 
 剩餘局數不足時不能選擇對應槓桿。場中特殊事件最多只能提供 ×2，因此最高倍率自然限制為 `×3 槓桿 × ×2 特殊事件 = ×6`。禁止新增會造成超過 ×6 的倍率來源；不可依賴結算時截斷成 6，事件設計本身必須守住上限。
 
-允許倍率為 ×1、×2、×3、×4、×6，實作時需維持與現有程式場景及倍率顯示機制相容。
+正向倍率為 ×1、×2、×3、×4、×6；猜拳落敗另可能形成 ×0.5、×1、×1.5。倍率由 `leverageMultiplier × specialMultiplier` 自然形成，不使用 runtime clamp。
 
 ## 7. 正式牌數與小遊戲節點
 
@@ -124,11 +124,10 @@ Phase 1 不要求建立小遊戲節點。第 8、13 張的 Mini-game Placeholder
 | 2 | 老闆加碼 | 本局分數 ×2，純正面事件 |
 | 3 | 今天牌比較多 | 本局正式牌數由 15 改為 16 |
 | 4 | 槓上老闆 | 本局正式牌數由 15 改為 14，且本局分數 ×2 |
-| 5 | 大開天眼 | 本局第一張牌由玩家自行決定 |
-| 6 | 珠珠寶貝 | 本局第 13 張固定為彈珠台，第 8 張不得為彈珠台 |
-| 7 | 當地球隊贏球 | 本局第 13 張固定為九宮格，第 8 張不得為九宮格 |
+| 5 | 珠珠寶貝 | 本局第 13 張固定為彈珠台，第 8 張不得為彈珠台 |
+| 6 | 當地球隊贏球 | 本局第 13 張固定為九宮格，第 8 張不得為九宮格 |
 
-即使真正小遊戲尚未實作，珠珠寶貝與當地球隊贏球也要在後續 Phase 先建立規則，並由 Placeholder 流程執行。
+Phase 1-C 已將珠珠寶貝與當地球隊贏球的第 8／13 張 Constraint 寫入 `round.config`；真正小遊戲與 Placeholder 流程於 Phase 2 接入。
 
 ## 12. 局中事件池分類
 
@@ -165,11 +164,11 @@ Phase 1 不要求建立小遊戲節點。第 8、13 張的 Mini-game Placeholder
 - 偷天換日
 - 隔壁棒球攤的球飛過來
 
-「老闆突然加碼」從局中事件池移除，未來改為場中特殊事件「老闆加碼」。
+「老闆突然加碼」已從局中事件池移除，場中特殊事件「老闆加碼」是目前唯一來源。
 
 大吉／小吉／小凶／大凶只影響局中事件池中的好事件與壞事件，不影響中立事件、場中事件、裝備抽取、下注事件或特殊事件。
 
-## 13. Phase 1-A～1-B 現行基線
+## 13. Phase 1-A～1-C 現行基線
 
 Phase 1-A 已完成：
 
@@ -179,6 +178,8 @@ Phase 1-A 已完成：
 - `TEST1129` 與固定測試劇本已完整移除；所有玩家名稱皆走正常 RNG。
 - 玩家可見的分數相關文字已統一使用「分數」或「分」。
 
-程式內部 `score`、`rawPoints`、`betDelta` 等名稱維持原狀，避免無必要的大規模 refactor。14／16 張特殊局、場中事件、裝備與小遊戲仍為 Planned / 尚未實作。
+程式內部 `score`、`rawPoints` 等名稱維持原狀，避免無必要的大規模 refactor。Phase 1-C 已接入 14／16 張特殊局與正式場中事件；裝備與小遊戲仍為 Planned / 尚未實作。
 
 Phase 1-B 另建立 PRE_ROUND selection／commit transaction 與 `round.config`。舊下注 UI 已退出正常 Gameplay，新局不會帶入舊下注；既有 settlement helper 暫時保留以降低本階段重構風險。
+
+Phase 1-C 以單一 committed BET Event 取代舊 Checkbox 多重下注，並安全移除只服務舊下注入口的 definitions／helpers。下注統計欄位延續使用，但由正式場中下注結算更新。

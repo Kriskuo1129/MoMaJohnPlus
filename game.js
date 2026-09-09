@@ -1,5 +1,5 @@
 const GAME_STATES = Object.freeze({
-  READY: "READY", PRE_ROUND: "PRE_ROUND", DRAWING: "DRAWING",
+  READY: "READY", PRE_ROUND: "PRE_ROUND", COMMITTING: "COMMITTING", DRAWING: "DRAWING",
   EVENT_REVEAL: "EVENT_REVEAL", BONUS_PENDING: "BONUS_PENDING", BONUS_DRAW: "BONUS_DRAW",
   ROUND_END: "ROUND_END", GAME_OVER: "GAME_OVER"
 });
@@ -47,7 +47,7 @@ const EMPTY_PLAYER_DISPLAY_NAME = "-沒輸入名稱-";
 let game;
 
 function freshGameState(playerName = "") {
-  const betStats = Object.fromEntries(BET_DEFINITIONS.map(bet => [bet.id, { played: 0, won: 0, lost: 0 }]));
+  const betStats = Object.fromEntries(PRE_ROUND_EVENT_DEFINITIONS.filter(event => event.type === "BET").map(event => [event.id, { played: 0, won: 0, lost: 0 }]));
   return {
     playerName, state: GAME_STATES.READY, score: 0, totalLines: 0,
     totalAttemptsGranted: RULES.initialAttempts, attemptsConsumed: 0, roundsPlayed: 0,
@@ -69,14 +69,16 @@ function freshGameState(playerName = "") {
   };
 }
 
-function createRound(formalDrawCount = RULES.baseFormalDrawCount) {
+function drawPreRoundEvents() { return shuffle(PRE_ROUND_EVENT_DEFINITIONS).slice(0, 3); }
+
+function createRound(formalDrawCount = RULES.baseFormalDrawCount, eventOptions = drawPreRoundEvents()) {
   const board = shuffle(GAME_TILES);
   const order = shuffle(GAME_TILES);
   return {
     board, formalDrawCount, hand: order.slice(0, formalDrawCount), remaining: order.slice(formalDrawCount), drawIndex: 0, drawn: new Set(), discarded: new Set(), started: false, attemptStart: game.attemptsConsumed,
-    preRound: { eventOptions: PRE_ROUND_EVENT_DEFINITIONS.slice(0, 3), selectedEventId: null, selectedLeverage: 1 }, config: null, committed: false,
-    completedLines: new Set(), activeWaiting: new Set(), announcedWaiting: new Set(), achievements: new Set(),
-    rawPoints: 0, roundScore: 0, roundLines: 0, roundMultiplier: 1, finalMultiplier: 1, leverageConfigured: false, activeBets: [], betsSettled: false, betResults: [], everWaited: false, waitingAnnouncements: 0,
+    preRound: { eventOptions, selectedEventId: null, selectedLeverage: 1 }, config: null, committed: false,
+    completedLines: new Set(), activeWaiting: new Set(), announcedWaiting: new Set(), everWaitingLines: new Set(), achievements: new Set(),
+    rawPoints: 0, roundScore: 0, roundLines: 0, roundMultiplier: 1, finalMultiplier: 1, leverageConfigured: false, betSettled: false, betResult: null, everWaited: false, waitingAnnouncements: 0,
     pointsSettled: false, multiplierPoints: 0, actualMultiplierPoints: 0, betNetPoints: 0, finalRoundChange: 0, scoreBeforeSettlement: 0, eventAttemptDelta: 0, eventAddedAttempts: 0,
     bonusMissing: new Set(), bonusCandidates: [], selectedBonusTiles: [], bonusResolved: false, bonusPendingStarted: false, bonusAttemptGain: 0
   };
@@ -122,10 +124,11 @@ function renderPreRound() {
   elements.preRoundEventOptions.replaceChildren(...eventOptions.map(event => {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = `pre-round-event-card${selectedEventId === event.id ? " selected" : ""}`;
+    button.className = `pre-round-event-card pre-round-event-${event.type.toLowerCase()}${selectedEventId === event.id ? " selected" : ""}`;
     button.dataset.eventId = event.id;
     button.setAttribute("aria-pressed", String(selectedEventId === event.id));
-    button.innerHTML = `<small>PLACEHOLDER</small><b>${event.title}</b><span>${event.description}</span>`;
+    const outcome = event.type === "BET" ? `<em>成功 +${event.reward}｜失敗 -${event.penalty}</em>` : "";
+    button.innerHTML = `<small>${event.type === "BET" ? "下注" : "特殊"}</small><b>${event.title}</b><span>${event.description}</span>${outcome}`;
     button.addEventListener("click", selectPreRoundEvent);
     return button;
   }));
@@ -173,29 +176,80 @@ function commitRoundConfiguration() {
     elements.preRoundError.textContent = "目前剩餘局數不足，請重新選擇槓桿。";
     return false;
   }
+  const selectedEvent = eventOptions.find(event => event.id === selectedEventId);
   game.round.committed = true;
   elements.startRoundButton.disabled = true;
+  game.state = GAME_STATES.COMMITTING;
+  if (selectedEvent.effectKey === "ROCK_PAPER_SCISSORS") {
+    openRockPaperScissors(selectedEvent, selectedLeverage);
+    return true;
+  }
+  finalizeRoundConfiguration(selectedEvent, selectedLeverage);
+  return true;
+}
+
+function specialEventConfig(event) {
+  return {
+    specialMultiplier: event.multiplier ?? 1,
+    formalDrawCount: event.formalDrawCount ?? RULES.baseFormalDrawCount,
+    forcedMiniGame13: event.forcedMiniGame13 ?? null,
+    excludedMiniGame8: event.excludedMiniGame8 ?? null
+  };
+}
+
+function finalizeRoundConfiguration(event, leverage, specialMultiplierOverride = null) {
+  if (game.state !== GAME_STATES.COMMITTING || !game.round?.committed || game.round.config) return false;
+  const special = specialEventConfig(event);
+  if (specialMultiplierOverride !== null) special.specialMultiplier = specialMultiplierOverride;
+  const finalMultiplier = leverage * special.specialMultiplier;
   game.round.config = Object.freeze({
-    eventId: selectedEventId,
-    leverage: selectedLeverage,
-    multiplier: selectedLeverage,
-    formalDrawCount: game.round.formalDrawCount
+    eventId: event.id, eventType: event.type, leverage, leverageMultiplier: leverage,
+    specialMultiplier: special.specialMultiplier, finalMultiplier,
+    formalDrawCount: special.formalDrawCount,
+    activeBetId: event.type === "BET" ? event.id : null,
+    forcedMiniGame13: special.forcedMiniGame13,
+    excludedMiniGame8: special.excludedMiniGame8
   });
-  game.round.roundMultiplier = selectedLeverage;
-  game.round.finalMultiplier = selectedLeverage;
+  const order = shuffle(GAME_TILES);
+  game.round.formalDrawCount = special.formalDrawCount;
+  game.round.hand = order.slice(0, special.formalDrawCount);
+  game.round.remaining = order.slice(special.formalDrawCount);
+  game.round.roundMultiplier = leverage;
+  game.round.finalMultiplier = finalMultiplier;
   game.round.leverageConfigured = true;
   game.round.started = true;
-  game.attemptsConsumed += selectedLeverage;
+  game.attemptsConsumed += leverage;
   game.roundsPlayed += 1;
   game.stats.roundsPlayed += 1;
-  game.stats.totalRoundCost += selectedLeverage;
-  game.stats[`multiplier${selectedLeverage}Count`] += 1;
-  game.state = GAME_STATES.DRAWING;
+  game.stats.totalRoundCost += leverage;
+  game.stats[`multiplier${leverage}Count`] += 1;
   elements.preRoundPanel.classList.add("hidden");
   elements.playArea.classList.remove("hidden");
   renderBoard();
+  closeModal();
+  game.state = GAME_STATES.DRAWING;
   updateHUD();
   return true;
+}
+
+function openRockPaperScissors(event, leverage, message = "請選擇你的出拳。") {
+  const choices = [{ id: "rock", label: "石頭" }, { id: "scissors", label: "剪刀" }, { id: "paper", label: "布" }];
+  openModal({ icon: "拳", kicker: "場中特殊・與老闆猜拳", title: "猜拳決勝負", body: `<p>${message}</p><div class="rps-options">${choices.map(choice => `<button type="button" data-rps-choice="${choice.id}">${choice.label}</button>`).join("")}</div>`, actions: [] });
+  elements.modalBody.querySelectorAll("[data-rps-choice]").forEach(button => button.addEventListener("click", () => playRockPaperScissors(event, leverage, button.dataset.rpsChoice)));
+}
+
+function playRockPaperScissors(event, leverage, playerChoice) {
+  if (game.state !== GAME_STATES.COMMITTING || game.round.config) return;
+  const choices = ["rock", "scissors", "paper"];
+  const labels = { rock: "石頭", scissors: "剪刀", paper: "布" };
+  const bossChoice = choices[Math.floor(Math.random() * choices.length)];
+  if (playerChoice === bossChoice) {
+    openRockPaperScissors(event, leverage, `你和老闆都出${labels[playerChoice]}，平手，再猜一次！`);
+    return;
+  }
+  const won = (playerChoice === "rock" && bossChoice === "scissors") || (playerChoice === "scissors" && bossChoice === "paper") || (playerChoice === "paper" && bossChoice === "rock");
+  notifyScore(`你出${labels[playerChoice]}，老闆出${labels[bossChoice]}：${won ? "勝利 ×2" : "落敗 ×0.5"}`, { type: won ? "achievement" : "default", duration: 2200 });
+  finalizeRoundConfiguration(event, leverage, won ? 2 : 0.5);
 }
 
 function attemptsRemaining() { return Math.max(0, game.totalAttemptsGranted - game.attemptsConsumed); }
@@ -205,94 +259,19 @@ function grantAttempts(requested) {
   return granted;
 }
 function betPenalty(bet) { return Math.abs(Number(bet.penalty) || 0); }
-function selectedBetRisk(ids) { return ids.reduce((sum, id) => sum + betPenalty(BET_DEFINITIONS.find(bet => bet.id === id) ?? {}), 0); }
 function attemptDisplay() {
   const duringRound = game.round?.started && ![GAME_STATES.ROUND_END, GAME_STATES.GAME_OVER].includes(game.state);
   const numerator = duringRound ? game.round.attemptStart + 1 : Math.min(game.attemptsConsumed + 1, game.totalAttemptsGranted);
   return `${numerator} / ${game.totalAttemptsGranted}`;
 }
 
-function openLeverage() {
-  if (game.state !== GAME_STATES.DRAWING || game.busy || game.uiOverlayOpen) return;
-  game.uiOverlayOpen = true;
-  const readOnly = game.round.started;
-  const currentBets = new Set(game.round.activeBets);
-  const multiplierOptions = readOnly
-    ? `<div class="locked-multiplier"><strong>${game.round.finalMultiplier}x</strong><span>本局實際倍率</span></div>`
-    : [1, 2, 3].map(multiplier => `<label class="bet-option multiplier-option"><input type="radio" name="round-multiplier" value="${multiplier}" ${game.round.roundMultiplier === multiplier ? "checked" : ""} ${multiplier > attemptsRemaining() ? "disabled" : ""}><b>${multiplier}x</b><span>消耗 ${multiplier} 次${multiplier === 3 ? "・高風險" : ""}</span></label>`).join("");
-  const betOptions = readOnly
-    ? (game.round.activeBets.length ? `<ul class="locked-bets">${game.round.activeBets.map(id => { const bet = BET_DEFINITIONS.find(item => item.id === id); return `<li><b>${bet?.title ?? id}</b><small>${bet?.description ?? ""}<br>成功 +${bet?.reward ?? 0}｜失敗 -${betPenalty(bet ?? {})}</small></li>`; }).join("")}</ul>` : `<p class="empty-bets">本局沒有額外下注</p>`)
-    : BET_DEFINITIONS.filter(bet => bet.enabled).map(bet => {
-    const penalty = betPenalty(bet);
-    const checked = currentBets.has(bet.id);
-    const disabled = !checked && penalty > game.score;
-    return `<label class="bet-option${disabled ? " bet-unavailable" : ""}"><input type="checkbox" name="active-bet" value="${bet.id}" data-penalty="${penalty}" ${checked ? "checked" : ""} ${disabled ? "disabled" : ""}><span><b>${bet.title}</b><small>${bet.description}<br>成功 +${bet.reward}｜失敗 -${penalty}<br>門檻 ${penalty} 分${disabled ? `｜目前 ${game.score}｜🔒 分數不足` : ""}</small></span></label>`;
-  }).join("");
-  const riskSummary = readOnly ? "" : `<aside class="bet-risk-summary"><p>目前總分數 <strong data-risk-score>${game.score}</strong></p><p>最大可能損失 <strong data-risk-total>0</strong></p><p>下注後最低可能剩餘分數 <strong data-risk-remaining>${game.score}</strong></p><p class="bet-risk-message" data-risk-message aria-live="polite"></p></aside>`;
-  openModal({
-    icon: "注", kicker: `局數 ${attemptDisplay()}・剩餘 ${attemptsRemaining()} 局`, title: readOnly ? "本局下注與狀態" : "本局下注",
-    body: `<div class="betting-panel${readOnly ? " betting-readonly" : ""}"><section><h3>本局倍率</h3>${readOnly ? "" : "<p>本局分數依倍率即時顯示，第一次摸牌才消耗局數。</p>"}<div class="multiplier-options">${multiplierOptions}</div></section><section><h3>${readOnly ? "本局下注" : "額外下注"}</h3>${readOnly ? "" : "<p>可複選；總分數必須足以承擔所有下注的最大損失。</p>"}<div class="bet-options">${betOptions}</div></section>${riskSummary}<section class="round-status-panel"><h3>本局狀態</h3>${renderRoundStatusContent()}</section></div>`,
-    actions: readOnly ? [{ label: "關閉", action: closeLeverage }] : [{ label: "取消", className: "secondary", action: closeLeverage }, { label: "確認下注", action: confirmLeverage }]
-  });
-  elements.modal.classList.add("betting-sheet");
-  if (!readOnly) setupBettingControls();
-}
-
 function renderRoundStatusContent() {
   const lines = game.round?.roundLines ?? 0;
   const waiting = game.round?.activeWaiting.size ?? 0;
   const started = Boolean(game.round?.started);
-  const lineTarget = game.round?.activeBets.includes("three-lines") ? " / 3" : game.round?.activeBets.includes("one-line") ? " / 1" : "";
-  const waitingTarget = game.round?.activeBets.includes("waiting");
   const achievements = game.round?.achievements ?? new Set();
-  return `<div class="round-status-summary"><p class="${lineTarget ? "bet-target" : ""}"><small>完成連線</small><strong>${lines}${lineTarget}</strong></p><p class="${waitingTarget ? "bet-target" : ""}"><small>聽牌</small><strong>${game.round?.everWaited ? "已達成" : waiting ? `目前 ${waiting} 聽` : started ? "尚未達成" : "尚未開始"}</strong></p></div><div class="progress-list">${renderProgress()}</div><div class="special-progress"><span>天聽 <b>${achievements.has("early-waiting") ? "✓" : "—"}</b></span><span>海底撈月 <b>${achievements.has("last-tile-first-line") ? "✓" : "—"}</b></span></div>`;
+  return `<div class="round-status-summary"><p><small>完成連線</small><strong>${lines}</strong></p><p><small>聽牌</small><strong>${game.round?.everWaited ? "已達成" : waiting ? `目前 ${waiting} 聽` : started ? "尚未達成" : "尚未開始"}</strong></p></div><div class="progress-list">${renderProgress()}</div><div class="special-progress"><span>天聽 <b>${achievements.has("early-waiting") ? "✓" : "—"}</b></span><span>海底撈月 <b>${achievements.has("last-tile-first-line") ? "✓" : "—"}</b></span></div>`;
 }
-
-function setupBettingControls() {
-  const inputs = [...elements.modalBody.querySelectorAll('input[name="active-bet"]')];
-  const message = elements.modalBody.querySelector("[data-risk-message]");
-  const updateRisk = () => {
-    const selected = inputs.filter(input => input.checked).map(input => input.value);
-    const risk = selectedBetRisk(selected);
-    elements.modalBody.querySelector("[data-risk-total]").textContent = risk;
-    elements.modalBody.querySelector("[data-risk-remaining]").textContent = Math.max(0, game.score - risk);
-    inputs.forEach(input => {
-      if (input.checked) return;
-      const unavailable = risk + Number(input.dataset.penalty) > game.score;
-      input.disabled = unavailable;
-      input.closest(".bet-option")?.classList.toggle("bet-unavailable", unavailable);
-    });
-  };
-  inputs.forEach(input => input.addEventListener("change", () => {
-    const selected = inputs.filter(item => item.checked).map(item => item.value);
-    if (selectedBetRisk(selected) > game.score) {
-      input.checked = false;
-      message.textContent = "目前分數不足以承擔這項下注。";
-    } else message.textContent = "";
-    updateRisk();
-  }));
-  updateRisk();
-}
-
-function confirmLeverage() {
-  const multiplier = Number(elements.modalBody.querySelector('input[name="round-multiplier"]:checked')?.value ?? 1);
-  if (game.state !== GAME_STATES.DRAWING || game.round.started || multiplier > attemptsRemaining()) return;
-  const selectedBets = [...elements.modalBody.querySelectorAll('input[name="active-bet"]:checked')].map(input => input.value);
-  if (selectedBetRisk(selectedBets) > game.score) {
-    elements.modalBody.querySelector("[data-risk-message]").textContent = "目前分數不足以承擔這組下注。";
-    return;
-  }
-  game.round.roundMultiplier = multiplier;
-  game.round.finalMultiplier = multiplier;
-  game.round.leverageConfigured = true;
-  game.round.activeBets = selectedBets;
-  game.uiOverlayOpen = false;
-  closeModal();
-  elements.message.textContent = "";
-  updateHUD();
-}
-
-function closeLeverage() { game.uiOverlayOpen = false; closeModal(); }
 
 function tileContent(tile) {
   if (tile.special) {
@@ -472,6 +451,7 @@ function updateWaitingLines() {
   const newlyWaiting = waiting.filter(line => !previousWaitingIds.has(line.id) && !game.round.announcedWaiting.has(line.id));
   newlyWaiting.forEach(line => {
     game.round.announcedWaiting.add(line.id);
+    game.round.everWaitingLines.add(line.id);
     flashLine(line, "waiting");
   });
   if (newlyWaiting.length) {
@@ -730,12 +710,6 @@ const EVENT_EFFECT_HANDLERS = {
     if (delta < 0) game.stats.eventScoreLoss += Math.abs(delta); else game.stats.eventScoreGain += delta;
     return { effectLabel: `本局目前分數減半（${formatSignedScore(delta * game.round.finalMultiplier)} 分）` };
   },
-  DOUBLE_FINAL_MULTIPLIER() {
-    game.round.finalMultiplier = Math.min(6, game.round.finalMultiplier * 2);
-    game.stats.multiplierBoostEventCount += 1;
-    game.stats.highestMultiplier = Math.max(game.stats.highestMultiplier, game.round.finalMultiplier);
-    return { effectLabel: `本局最終倍率提升為 ${game.round.finalMultiplier}x` };
-  },
   END_ROUND() { game.stats.eventEarlyEndCount += 1; return { effectLabel: "本局立即結束", endRound: true }; },
   END_GAME() { game.totalAttemptsGranted = game.attemptsConsumed; game.stats.eventEarlyEndCount += 1; game.stats.gameOverByEvent = true; return { effectLabel: "立即結束整場遊戲", gameOver: true }; },
   REPLACE_DRAWN_TILE(event) {
@@ -809,22 +783,21 @@ function finishSpecialEvent() {
 function restartCurrentRound() {
   const previous = game.round;
   rollbackRoundOutcomeStats(previous);
-  const replacement = createRound(previous.formalDrawCount);
+  const replacement = createRound(previous.config.formalDrawCount, previous.preRound.eventOptions);
   replacement.preRound = previous.preRound;
   replacement.config = previous.config;
   replacement.committed = true;
   replacement.started = true;
   replacement.attemptStart = previous.attemptStart;
-  replacement.roundMultiplier = previous.roundMultiplier;
-  replacement.finalMultiplier = previous.roundMultiplier;
+  replacement.roundMultiplier = previous.config.leverageMultiplier;
+  replacement.finalMultiplier = previous.config.finalMultiplier;
   replacement.leverageConfigured = previous.leverageConfigured;
-  replacement.activeBets = [...previous.activeBets];
   game.round = replacement;
-  game.state = GAME_STATES.DRAWING;
   game.busy = false;
   elements.preRoundPanel.classList.add("hidden");
   elements.playArea.classList.remove("hidden");
   renderBoard();
+  game.state = GAME_STATES.DRAWING;
   updateHUD();
   notifyScore("本局重新開始！場中事件與槓桿已保留", { type: "achievement", duration: 2200 });
 }
@@ -846,32 +819,31 @@ function rollbackRoundOutcomeStats(round) {
 
 function betConditionMet(bet) {
   const handlers = {
-    MIN_HONORS: () => bet.conditionValue.tileIds.filter(isOfficiallyDrawn).length >= bet.conditionValue.minimum,
-    MIN_LINES: () => game.round.roundLines >= bet.conditionValue,
-    EVER_WAITED: () => game.round.everWaited
+    REQUIRE_TILES: () => bet.tileIds.every(isOfficiallyDrawn),
+    MIN_LINES: () => game.round.roundLines >= bet.minimum,
+    EVER_WAITED: () => game.round.everWaited,
+    UNFINISHED_WAITING_LINE: () => [...game.round.everWaitingLines].some(lineId => !game.round.completedLines.has(lineId))
   };
-  return Boolean(handlers[bet.conditionType]?.());
+  return Boolean(handlers[bet.effectKey]?.());
 }
 
 function settleBets() {
-  if (game.round.betsSettled) return game.round.betResults;
-  game.round.betsSettled = true;
-  game.round.betResults = game.round.activeBets.map(id => {
-    const bet = BET_DEFINITIONS.find(item => item.id === id);
-    if (!bet) return null;
-    const won = betConditionMet(bet);
-    const requested = won ? bet.reward : -betPenalty(bet);
-    const before = game.score;
-    addTotalPoints(requested);
-    const actual = game.score - before;
-    const stat = game.stats.betStats[id];
-    game.stats.betsPlaced += 1;
-    game.stats[won ? "betsWon" : "betsLost"] += 1;
-    game.stats[won ? "betScoreGain" : "betScoreLoss"] += won ? bet.reward : betPenalty(bet);
-    stat.played += 1; stat[won ? "won" : "lost"] += 1;
-    return { bet, won, points: actual };
-  }).filter(Boolean);
-  return game.round.betResults;
+  if (game.round.betSettled) return game.round.betResult ? [game.round.betResult] : [];
+  game.round.betSettled = true;
+  const betId = game.round.config?.activeBetId;
+  const bet = PRE_ROUND_EVENT_DEFINITIONS.find(event => event.id === betId && event.type === "BET");
+  if (!bet) return [];
+  const won = betConditionMet(bet);
+  const requested = won ? bet.reward : -betPenalty(bet);
+  addTotalPoints(requested);
+  const stat = game.stats.betStats[bet.id];
+  game.stats.betsPlaced += 1;
+  game.stats[won ? "betsWon" : "betsLost"] += 1;
+  game.stats[won ? "betScoreGain" : "betScoreLoss"] += won ? bet.reward : betPenalty(bet);
+  stat.played += 1;
+  stat[won ? "won" : "lost"] += 1;
+  game.round.betResult = { bet, won, points: requested };
+  return [game.round.betResult];
 }
 
 function settleRoundPoints() {

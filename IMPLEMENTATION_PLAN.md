@@ -1,6 +1,6 @@
 # MoMaJohnPlus Implementation Plan
 
-本計畫描述 MoMaJohnPlus 的分階段導入順序。Phase 0、Phase 1-A 與 Phase 1-B 已完成；Phase 1-C 以後均為 **Planned / 尚未實作**。
+本計畫描述 MoMaJohnPlus 的分階段導入順序。Phase 0、Phase 1-A、Phase 1-B 與 Phase 1-C 已完成；Phase 1-D 以後均為 **Planned / 尚未實作**。
 
 ## Phase 0 — Project Identity & Documentation Baseline
 
@@ -35,13 +35,15 @@ Phase 0 不修改 Gameplay 行為。
 - 讓 Restart Current Round 沿用 committed config 且不重扣局數。
 - 將舊下注 UI 移出正常 Gameplay；暫時保留未使用的 settlement helper。
 
-### Phase 1-C — 正式場中事件與動態牌數（Planned / 尚未實作）
+### Phase 1-C — 正式場中事件與動態牌數（已完成）
 
 - 導入正式場中下注事件。
 - 導入正式場中特殊事件。
 - 將「老闆加碼」移出局中事件並納入場中特殊事件。
 - 支援 14～16 張動態牌數。
 - 接入正式場中事件 Pool 抽取與效果 Commit。
+- 「珠珠寶貝」與「當地球隊贏球」只 Commit Phase 2 所需 Constraint；Mini-game 尚未實作。
+- 舊 Checkbox 多重下注及其專用 helper 已退休，統計概念由單一場中下注事件延續。
 
 ### Phase 1-D — 裝備系統（Planned / 尚未實作）
 
