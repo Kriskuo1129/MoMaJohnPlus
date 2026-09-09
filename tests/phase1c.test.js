@@ -72,6 +72,7 @@ globalThis.phase1CTest = {
     game = freshGameState("TEST");
     const event = PRE_ROUND_EVENT_DEFINITIONS.find(item => item.id === eventId);
     game.round = createRound(RULES.baseFormalDrawCount, [event]);
+    game.round.preRound.eventSelectionType = "EVENT";
     game.round.preRound.selectedEventId = eventId;
     game.round.preRound.selectedLeverage = leverage;
     game.state = GAME_STATES.PRE_ROUND;
@@ -83,6 +84,7 @@ globalThis.phase1CTest = {
     game = freshGameState("TEST");
     const event = PRE_ROUND_EVENT_DEFINITIONS.find(item => item.id === "rock-paper-scissors");
     game.round = createRound(RULES.baseFormalDrawCount, [event]);
+    game.round.preRound.eventSelectionType = "EVENT";
     game.round.preRound.selectedEventId = event.id;
     game.round.preRound.selectedLeverage = leverage;
     game.state = GAME_STATES.PRE_ROUND;
@@ -151,7 +153,8 @@ const api = context.phase1CTest;
 
 assert.equal(api.definitions.filter(event => event.type === "BET").length, 9);
 assert.equal(api.definitions.filter(event => event.type === "SPECIAL").length, 6);
-assert.equal(new Set(api.definitions.map(event => event.id)).size, 15);
+assert.equal(api.definitions.filter(event => event.type === "ITEM").length, 1);
+assert.equal(new Set(api.definitions.map(event => event.id)).size, 16);
 assert.equal(api.definitions.some(event => event.id === "open-eye" || event.title === "大開天眼" || event.effectKey === "CHOOSE_FIRST_TILE"), false);
 for (let index = 0; index < 100; index += 1) {
   const options = api.drawOptions();

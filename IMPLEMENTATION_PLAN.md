@@ -1,6 +1,6 @@
 # MoMaJohnPlus Implementation Plan
 
-本計畫描述 MoMaJohnPlus 的分階段導入順序。Phase 0、Phase 1-A、Phase 1-B 與 Phase 1-C 已完成；Phase 1-D 以後均為 **Planned / 尚未實作**。
+本計畫描述 MoMaJohnPlus 的分階段導入順序。Phase 0、Phase 1-A、Phase 1-B、Phase 1-C 與 Phase 1-D 已完成；Phase 1-E 以後均為 **Planned / 尚未實作**。
 
 ## Phase 0 — Project Identity & Documentation Baseline
 
@@ -45,18 +45,22 @@ Phase 0 不修改 Gameplay 行為。
 - 「珠珠寶貝」與「當地球隊贏球」只 Commit Phase 2 所需 Constraint；Mini-game 尚未實作。
 - 舊 Checkbox 多重下注及其專用 helper 已退休，統計概念由單一場中下注事件延續。
 
-### Phase 1-D — 裝備系統（Planned / 尚未實作）
+### Phase 1-D — Item 系統（已完成）
 
-- 建立三格裝備欄與裝備 inventory。
-- 建立裝備抽取、替換、持續型、自動消耗型及主動消耗型流程。
-- 導入既定裝備池；不包含局中事件機率調整的最終整合。
+- 建立三格 Item inventory、Commit 後抽取與滿格強制替換流程。
+- 加入專屬 Item Reveal，滿格時依序執行 Reveal → 強制 Replacement。
+- 導入 10 個既定 Item，並完成跨局保留與新場重置。
+- 接入嗆司Maker每局首次聽牌效果與三個口袋系列主動替換效果。
+- 建立「道具 / 狀態」入口及按住「已抽牌型」即時總覽。
+- PRE_ROUND 可明確放棄場中事件，仍能獨立選擇合法槓桿，並建立 `NONE` config snapshot。
+- 籤詩局中事件機率及免洗護身符抵銷保留至 Phase 1-E。
 
 ### Phase 1-E — 局中事件重整與 Regression（Planned / 尚未實作）
 
 - 重新分類局中事件。
 - 將籤詩效果接入好／壞局中事件機率。
 - 接入免洗護身符及瓦斯桶爆炸抵銷。
-- 完成局中事件、Restart、BONUS、GAME OVER 與裝備交互 Regression。
+- 完成局中事件、Restart、BONUS、GAME OVER 與 Item 交互 Regression。
 
 ## Phase 2 — Mini-game Integration Skeleton
 
@@ -75,7 +79,7 @@ Planned / 尚未實作：
 - 大頭貼上傳與結算大頭貼。
 - 小遊戲大頭貼 Easter Egg。
 - 七款真正小遊戲逐步實作。
-- 小遊戲輔助裝備。
+- 小遊戲輔助 Item。
 - 玩家操作取得麻將牌。
 - Playtest。
 - 依實際成功率重新平衡下注與事件。

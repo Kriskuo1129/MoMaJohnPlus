@@ -16,6 +16,7 @@ const SCORE_CONFIG = Object.freeze({
 });
 
 const PRE_ROUND_EVENT_DEFINITIONS = Object.freeze([
+  Object.freeze({ id: "mystery-gift", title: "神秘禮物到來", description: "開牌局後隨機獲得一個道具。", type: "ITEM", effectKey: "DRAW_ITEM" }),
   Object.freeze({ id: "believe-guoju", title: "相信國聚", description: "正式取得東南西北中發白全部 7 張。", type: "BET", effectKey: "REQUIRE_TILES", tileIds: ["east", "south", "west", "north", "red", "green", "white"], reward: 30, penalty: 30 }),
   Object.freeze({ id: "chiikawa", title: "吉一卡哇", description: "正式取得一萬、一筒、一條。", type: "BET", effectKey: "REQUIRE_TILES", tileIds: ["wan-1", "tong-1", "suo-1"], reward: 15, penalty: 10 }),
   Object.freeze({ id: "three-set", title: "無三不成禮", description: "正式取得三萬、三筒、三條。", type: "BET", effectKey: "REQUIRE_TILES", tileIds: ["wan-3", "tong-3", "suo-3"], reward: 15, penalty: 10 }),
@@ -31,6 +32,19 @@ const PRE_ROUND_EVENT_DEFINITIONS = Object.freeze([
   Object.freeze({ id: "boss-leverage", title: "槓上老闆", description: "本局 14 張，特殊倍率 ×2。", type: "SPECIAL", effectKey: "DRAW_COUNT_AND_MULTIPLIER", formalDrawCount: 14, multiplier: 2 }),
   Object.freeze({ id: "pearl-baby", title: "珠珠寶貝", description: "Commit 彈珠台第 13 張／第 8 張排除條件。", type: "SPECIAL", effectKey: "MINI_GAME_CONSTRAINT", forcedMiniGame13: "pinball", excludedMiniGame8: "pinball" }),
   Object.freeze({ id: "home-team-wins", title: "當地球隊贏球", description: "Commit 九宮格第 13 張／第 8 張排除條件。", type: "SPECIAL", effectKey: "MINI_GAME_CONSTRAINT", forcedMiniGame13: "nine-grid", excludedMiniGame8: "nine-grid" })
+]);
+
+const ITEM_DEFINITIONS = Object.freeze([
+  Object.freeze({ id: "great-fortune", title: "大吉的籤", type: "PASSIVE", description: "今晚好像會非常幸運……", integration: "PHASE_1_E" }),
+  Object.freeze({ id: "small-fortune", title: "小吉的籤", type: "PASSIVE", description: "今晚好像會比較幸運……", integration: "PHASE_1_E" }),
+  Object.freeze({ id: "small-misfortune", title: "小凶的籤", type: "PASSIVE", description: "今晚似乎有點不妙……", integration: "PHASE_1_E" }),
+  Object.freeze({ id: "great-misfortune", title: "大凶的籤", type: "PASSIVE", description: "今晚似乎特別不妙……", integration: "PHASE_1_E" }),
+  Object.freeze({ id: "chance-maker", title: "嗆司Maker", type: "PASSIVE", description: "每局第一次聽牌時，額外 +5 本局分數。" }),
+  Object.freeze({ id: "empty-cup", title: "喝完的飲料杯", type: "PASSIVE", description: "沒有任何效果，但會占用一格道具欄。" }),
+  Object.freeze({ id: "disposable-charm", title: "免洗護身符", type: "AUTO", description: "未來可擋下第一個負面局中事件。", integration: "PHASE_1_E" }),
+  Object.freeze({ id: "pocket-green", title: "口袋中的發", type: "ACTIVE", description: "將一張已取得普通麻將換成發。", targetTileId: "green" }),
+  Object.freeze({ id: "pocket-red", title: "口袋中的中", type: "ACTIVE", description: "將一張已取得普通麻將換成中。", targetTileId: "red" }),
+  Object.freeze({ id: "pocket-white", title: "口袋中的白板", type: "ACTIVE", description: "將一張已取得普通麻將換成白。", targetTileId: "white" })
 ]);
 
 const EVENT_DEFINITIONS = [

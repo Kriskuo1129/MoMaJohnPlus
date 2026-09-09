@@ -26,7 +26,8 @@ const GAME_TILES = [...CORE_TILES,
 const elements = Object.fromEntries([
   "board", "draw-stack", "total-score", "round-score", "rounds-display", "player-display",
   "player-name-input", "player-name-error", "help-button", "main-menu-button", "start-screen", "game-shell", "play-area",
-  "pre-round-panel", "pre-round-event-options", "pre-round-leverage-options", "pre-round-error", "start-round-button",
+  "item-status-button", "tile-peek-button", "tile-overview-overlay", "tile-overview-grid",
+  "pre-round-panel", "pre-round-event-options", "pre-round-skip-button", "pre-round-leverage-options", "pre-round-error", "start-round-button",
   "final-waiting-overlay", "final-waiting-title", "final-waiting-missing",
   "bonus-modal", "bonus-waiting", "bonus-instruction", "bonus-count", "bonus-grid", "bonus-result",
   "message",
@@ -49,7 +50,7 @@ let game;
 function freshGameState(playerName = "") {
   const betStats = Object.fromEntries(PRE_ROUND_EVENT_DEFINITIONS.filter(event => event.type === "BET").map(event => [event.id, { played: 0, won: 0, lost: 0 }]));
   return {
-    playerName, state: GAME_STATES.READY, score: 0, totalLines: 0,
+    playerName, state: GAME_STATES.READY, score: 0, totalLines: 0, items: [],
     totalAttemptsGranted: RULES.initialAttempts, attemptsConsumed: 0, roundsPlayed: 0,
     achievementCount: 0, round: null, busy: false, pendingSpecial: null, uiOverlayOpen: false,
     stats: {
@@ -76,9 +77,9 @@ function createRound(formalDrawCount = RULES.baseFormalDrawCount, eventOptions =
   const order = shuffle(GAME_TILES);
   return {
     board, formalDrawCount, hand: order.slice(0, formalDrawCount), remaining: order.slice(formalDrawCount), drawIndex: 0, drawn: new Set(), discarded: new Set(), started: false, attemptStart: game.attemptsConsumed,
-    preRound: { eventOptions, selectedEventId: null, selectedLeverage: 1 }, config: null, committed: false,
+    preRound: { eventOptions, eventSelectionType: "UNSELECTED", selectedEventId: null, selectedLeverage: 1 }, config: null, committed: false,
     completedLines: new Set(), activeWaiting: new Set(), announcedWaiting: new Set(), everWaitingLines: new Set(), achievements: new Set(),
-    rawPoints: 0, roundScore: 0, roundLines: 0, roundMultiplier: 1, finalMultiplier: 1, leverageConfigured: false, betSettled: false, betResult: null, everWaited: false, waitingAnnouncements: 0,
+    rawPoints: 0, roundScore: 0, roundLines: 0, roundMultiplier: 1, finalMultiplier: 1, leverageConfigured: false, betSettled: false, betResult: null, everWaited: false, waitingAnnouncements: 0, chanceMakerTriggered: false, pendingItemId: null, itemRevealConfirmed: false,
     pointsSettled: false, multiplierPoints: 0, actualMultiplierPoints: 0, betNetPoints: 0, finalRoundChange: 0, scoreBeforeSettlement: 0, eventAttemptDelta: 0, eventAddedAttempts: 0,
     bonusMissing: new Set(), bonusCandidates: [], selectedBonusTiles: [], bonusResolved: false, bonusPendingStarted: false, bonusAttemptGain: 0
   };
@@ -104,6 +105,7 @@ function weightedRandom(events, random = Math.random()) {
 }
 
 function startRound() {
+  hideTileOverview();
   closeModal();
   closeBonusModal();
   closeFinalWaitingPrompt();
@@ -120,18 +122,22 @@ function startRound() {
 
 function renderPreRound() {
   if (game.state !== GAME_STATES.PRE_ROUND || !game.round || game.round.committed) return;
-  const { eventOptions, selectedEventId, selectedLeverage } = game.round.preRound;
+  const { eventOptions, eventSelectionType, selectedEventId, selectedLeverage } = game.round.preRound;
   elements.preRoundEventOptions.replaceChildren(...eventOptions.map(event => {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = `pre-round-event-card pre-round-event-${event.type.toLowerCase()}${selectedEventId === event.id ? " selected" : ""}`;
+    const selected = eventSelectionType === "EVENT" && selectedEventId === event.id;
+    button.className = `pre-round-event-card pre-round-event-${event.type.toLowerCase()}${selected ? " selected" : ""}`;
     button.dataset.eventId = event.id;
-    button.setAttribute("aria-pressed", String(selectedEventId === event.id));
+    button.setAttribute("aria-pressed", String(selected));
     const outcome = event.type === "BET" ? `<em>成功 +${event.reward}｜失敗 -${event.penalty}</em>` : "";
-    button.innerHTML = `<small>${event.type === "BET" ? "下注" : "特殊"}</small><b>${event.title}</b><span>${event.description}</span>${outcome}`;
+    const typeLabel = { BET: "下注", SPECIAL: "特殊", ITEM: "道具" }[event.type];
+    button.innerHTML = `<small>${typeLabel}</small><b>${event.title}</b><span>${event.description}</span>${outcome}`;
     button.addEventListener("click", selectPreRoundEvent);
     return button;
   }));
+  elements.preRoundSkipButton.classList.toggle("selected", eventSelectionType === "SKIP");
+  elements.preRoundSkipButton.setAttribute("aria-pressed", String(eventSelectionType === "SKIP"));
   elements.preRoundLeverageOptions.replaceChildren(...[1, 2, 3].map(leverage => {
     const button = document.createElement("button");
     const available = leverage <= attemptsRemaining();
@@ -145,14 +151,22 @@ function renderPreRound() {
     return button;
   }));
   elements.preRoundError.textContent = "";
-  elements.startRoundButton.disabled = !selectedEventId;
+  elements.startRoundButton.disabled = eventSelectionType === "UNSELECTED";
 }
 
 function selectPreRoundEvent(event) {
   if (game.state !== GAME_STATES.PRE_ROUND || game.round.committed) return;
   const eventId = event.currentTarget.dataset.eventId;
   if (!game.round.preRound.eventOptions.some(option => option.id === eventId)) return;
+  game.round.preRound.eventSelectionType = "EVENT";
   game.round.preRound.selectedEventId = eventId;
+  renderPreRound();
+}
+
+function selectPreRoundSkip() {
+  if (game.state !== GAME_STATES.PRE_ROUND || game.round.committed) return;
+  game.round.preRound.eventSelectionType = "SKIP";
+  game.round.preRound.selectedEventId = null;
   renderPreRound();
 }
 
@@ -166,9 +180,10 @@ function selectPreRoundLeverage(event) {
 
 function commitRoundConfiguration() {
   if (game.state !== GAME_STATES.PRE_ROUND || !game.round || game.round.committed) return false;
-  const { eventOptions, selectedEventId, selectedLeverage } = game.round.preRound;
-  if (!eventOptions.some(event => event.id === selectedEventId)) {
-    elements.preRoundError.textContent = "請先選擇一張場中事件。";
+  const { eventOptions, eventSelectionType, selectedEventId, selectedLeverage } = game.round.preRound;
+  const selectedEvent = eventSelectionType === "EVENT" ? eventOptions.find(event => event.id === selectedEventId) : null;
+  if (eventSelectionType === "UNSELECTED" || (eventSelectionType === "EVENT" && !selectedEvent) || !["EVENT", "SKIP"].includes(eventSelectionType)) {
+    elements.preRoundError.textContent = "請選擇一張場中事件，或明確選擇這局不選事件。";
     return false;
   }
   if (![1, 2, 3].includes(selectedLeverage) || selectedLeverage > attemptsRemaining()) {
@@ -176,25 +191,78 @@ function commitRoundConfiguration() {
     elements.preRoundError.textContent = "目前剩餘局數不足，請重新選擇槓桿。";
     return false;
   }
-  const selectedEvent = eventOptions.find(event => event.id === selectedEventId);
   game.round.committed = true;
   elements.startRoundButton.disabled = true;
   game.state = GAME_STATES.COMMITTING;
-  if (selectedEvent.effectKey === "ROCK_PAPER_SCISSORS") {
+  if (selectedEvent?.effectKey === "ROCK_PAPER_SCISSORS") {
     openRockPaperScissors(selectedEvent, selectedLeverage);
+    return true;
+  }
+  if (selectedEvent?.type === "ITEM") {
+    beginItemAcquisition(selectedEvent, selectedLeverage);
     return true;
   }
   finalizeRoundConfiguration(selectedEvent, selectedLeverage);
   return true;
 }
 
-function specialEventConfig(event) {
+function specialEventConfig(event = null) {
   return {
-    specialMultiplier: event.multiplier ?? 1,
-    formalDrawCount: event.formalDrawCount ?? RULES.baseFormalDrawCount,
-    forcedMiniGame13: event.forcedMiniGame13 ?? null,
-    excludedMiniGame8: event.excludedMiniGame8 ?? null
+    specialMultiplier: event?.multiplier ?? 1,
+    formalDrawCount: event?.formalDrawCount ?? RULES.baseFormalDrawCount,
+    forcedMiniGame13: event?.forcedMiniGame13 ?? null,
+    excludedMiniGame8: event?.excludedMiniGame8 ?? null
   };
+}
+
+function itemById(itemId) { return ITEM_DEFINITIONS.find(item => item.id === itemId); }
+function hasItem(itemId) { return game.items.includes(itemId); }
+
+function beginItemAcquisition(event, leverage) {
+  if (game.state !== GAME_STATES.COMMITTING || game.round.config) return false;
+  if (!game.round.pendingItemId) game.round.pendingItemId = ITEM_DEFINITIONS[Math.floor(Math.random() * ITEM_DEFINITIONS.length)].id;
+  openItemReveal(event, leverage);
+  return true;
+}
+
+function openItemReveal(event, leverage) {
+  if (game.state !== GAME_STATES.COMMITTING || game.round.config || game.round.itemRevealConfirmed) return false;
+  const incoming = itemById(game.round.pendingItemId);
+  const isFull = game.items.length >= 3;
+  openModal({
+    icon: "禮", kicker: "神秘禮物！", title: "你抽到了",
+    body: `<article class="item-reveal"><b>${incoming.title}</b><p>${incoming.description}</p></article>`,
+    actions: [{ label: isFull ? "選擇替換" : "收下", action: () => isFull ? confirmItemReplacement(event, leverage) : acceptRevealedItem(event, leverage) }]
+  });
+  return true;
+}
+
+function acceptRevealedItem(event, leverage) {
+  if (game.state !== GAME_STATES.COMMITTING || game.round.config || game.round.itemRevealConfirmed || game.items.length >= 3) return false;
+  game.round.itemRevealConfirmed = true;
+  game.items.push(game.round.pendingItemId);
+  notifyScore(`獲得道具：${itemById(game.round.pendingItemId).title}`, { type: "achievement", duration: 2200 });
+  return finalizeRoundConfiguration(event, leverage);
+}
+
+function confirmItemReplacement(event, leverage) {
+  if (game.state !== GAME_STATES.COMMITTING || game.round.config || game.round.itemRevealConfirmed || game.items.length < 3) return false;
+  game.round.itemRevealConfirmed = true;
+  openItemReplacement(event, leverage);
+  return true;
+}
+
+function openItemReplacement(event, leverage) {
+  const incoming = itemById(game.round.pendingItemId);
+  openModal({ icon: "禮", kicker: "神秘禮物到來", title: `獲得：${incoming.title}`, body: `<p>道具欄已滿，請選擇一個舊道具替換。</p><div class="item-replacement-options">${game.items.map((itemId, index) => { const item = itemById(itemId); return `<button type="button" data-replace-item-index="${index}"><b>${item.title}</b><span>${item.description}</span></button>`; }).join("")}</div>`, actions: [] });
+  elements.modalBody.querySelectorAll("[data-replace-item-index]").forEach(button => button.addEventListener("click", () => completeItemReplacement(event, leverage, Number(button.dataset.replaceItemIndex))));
+}
+
+function completeItemReplacement(event, leverage, index) {
+  if (game.state !== GAME_STATES.COMMITTING || game.round.config || !game.round.itemRevealConfirmed || index < 0 || index >= game.items.length) return false;
+  game.items[index] = game.round.pendingItemId;
+  notifyScore(`道具已替換為：${itemById(game.round.pendingItemId).title}`, { type: "achievement", duration: 2200 });
+  return finalizeRoundConfiguration(event, leverage);
 }
 
 function finalizeRoundConfiguration(event, leverage, specialMultiplierOverride = null) {
@@ -203,10 +271,10 @@ function finalizeRoundConfiguration(event, leverage, specialMultiplierOverride =
   if (specialMultiplierOverride !== null) special.specialMultiplier = specialMultiplierOverride;
   const finalMultiplier = leverage * special.specialMultiplier;
   game.round.config = Object.freeze({
-    eventId: event.id, eventType: event.type, leverage, leverageMultiplier: leverage,
+    eventId: event?.id ?? null, eventType: event?.type ?? "NONE", leverage, leverageMultiplier: leverage,
     specialMultiplier: special.specialMultiplier, finalMultiplier,
     formalDrawCount: special.formalDrawCount,
-    activeBetId: event.type === "BET" ? event.id : null,
+    activeBetId: event?.type === "BET" ? event.id : null,
     forcedMiniGame13: special.forcedMiniGame13,
     excludedMiniGame8: special.excludedMiniGame8
   });
@@ -271,6 +339,101 @@ function renderRoundStatusContent() {
   const started = Boolean(game.round?.started);
   const achievements = game.round?.achievements ?? new Set();
   return `<div class="round-status-summary"><p><small>完成連線</small><strong>${lines}</strong></p><p><small>聽牌</small><strong>${game.round?.everWaited ? "已達成" : waiting ? `目前 ${waiting} 聽` : started ? "尚未達成" : "尚未開始"}</strong></p></div><div class="progress-list">${renderProgress()}</div><div class="special-progress"><span>天聽 <b>${achievements.has("early-waiting") ? "✓" : "—"}</b></span><span>海底撈月 <b>${achievements.has("last-tile-first-line") ? "✓" : "—"}</b></span></div>`;
+}
+
+function currentRoundStatusText() {
+  if (game.round?.config?.eventType === "NONE") return "本局未選擇場中事件";
+  const event = PRE_ROUND_EVENT_DEFINITIONS.find(item => item.id === game.round?.config?.eventId);
+  if (!event) return "尚未開始本局。";
+  if (event.type === "BET") return `${event.title}下注中`;
+  if (event.id === "boss-boost" || event.id === "boss-leverage") return `${event.title}，本局 ×${game.round.config.finalMultiplier}`;
+  if (event.id === "rock-paper-scissors") return `與老闆猜拳已分勝負，本局 ×${game.round.config.finalMultiplier}`;
+  return event.title;
+}
+
+function canUsePocketItem(item) {
+  return game.state === GAME_STATES.DRAWING && !game.busy && !isOfficiallyDrawn(item.targetTileId) && CORE_TILES.some(tile => tile.id !== item.targetTileId && isOfficiallyDrawn(tile.id));
+}
+
+function openItemStatus() {
+  if (game.state !== GAME_STATES.DRAWING || game.busy || game.uiOverlayOpen) return;
+  game.uiOverlayOpen = true;
+  const slots = Array.from({ length: 3 }, (_, index) => {
+    const item = itemById(game.items[index]);
+    if (!item) return `<article class="item-slot empty"><b>空道具格</b><span>尚未取得道具</span></article>`;
+    const action = item.type === "ACTIVE" ? `<button type="button" data-use-item-index="${index}" ${canUsePocketItem(item) ? "" : "disabled"}>使用</button>` : "";
+    return `<article class="item-slot"><b>${item.title}</b><span>${item.description}</span>${action}</article>`;
+  }).join("");
+  openModal({ icon: "具", kicker: "ITEM / STATUS", title: "道具 / 狀態", body: `<div class="item-status"><section><h3>目前道具</h3><div class="item-slots">${slots}</div></section><section><h3>目前狀態</h3><p>${currentRoundStatusText()}</p></section><small>牌型請按住右側「已抽牌型」查看</small></div>`, actions: [{ label: "關閉", action: closeItemStatus }] });
+  elements.modalBody.querySelectorAll("[data-use-item-index]").forEach(button => button.addEventListener("click", () => beginPocketItemUse(Number(button.dataset.useItemIndex))));
+}
+
+function closeItemStatus() { game.uiOverlayOpen = false; closeModal(); }
+
+function beginPocketItemUse(index) {
+  const item = itemById(game.items[index]);
+  if (!item?.targetTileId || !canUsePocketItem(item)) return false;
+  const candidates = CORE_TILES.filter(tile => tile.id !== item.targetTileId && isOfficiallyDrawn(tile.id));
+  const target = GAME_TILES.find(tile => tile.id === item.targetTileId);
+  openModal({ icon: "換", kicker: item.title, title: `選一張牌換成${target.label}`, body: `<p>選擇一張已取得的普通麻將進行替換。</p><div class="item-tile-options">${candidates.map(tile => `<button type="button" class="hand-tile" data-item-source-id="${tile.id}" aria-label="${tile.label}">${tileContent(tile)}</button>`).join("")}</div>`, actions: [{ label: "取消", className: "secondary", action: cancelPocketItemUse }] });
+  elements.modalBody.querySelectorAll("[data-item-source-id]").forEach(button => button.addEventListener("click", () => completePocketItemUse(index, button.dataset.itemSourceId)));
+  return true;
+}
+
+function cancelPocketItemUse() { game.uiOverlayOpen = false; closeModal(); openItemStatus(); }
+
+function swapTileIds(collection, firstId, secondId) {
+  const firstIndex = collection.findIndex(tile => tile.id === firstId);
+  const secondIndex = collection.findIndex(tile => tile.id === secondId);
+  if (firstIndex < 0 || secondIndex < 0) return false;
+  [collection[firstIndex], collection[secondIndex]] = [collection[secondIndex], collection[firstIndex]];
+  return true;
+}
+
+function completePocketItemUse(index, sourceTileId) {
+  const item = itemById(game.items[index]);
+  if (!item?.targetTileId || !canUsePocketItem(item) || !isOfficiallyDrawn(sourceTileId) || GAME_TILES.find(tile => tile.id === sourceTileId)?.special) return false;
+  const targetTileId = item.targetTileId;
+  swapTileIds(game.round.board, sourceTileId, targetTileId);
+  const fullOrder = [...game.round.hand, ...game.round.remaining];
+  swapTileIds(fullOrder, sourceTileId, targetTileId);
+  game.round.hand = fullOrder.slice(0, game.round.formalDrawCount);
+  game.round.remaining = fullOrder.slice(game.round.formalDrawCount);
+  game.round.drawn.delete(sourceTileId);
+  game.round.drawn.add(targetTileId);
+  game.items.splice(index, 1);
+  game.uiOverlayOpen = false;
+  renderBoard();
+  scoreLines();
+  scoreCollections();
+  updateWaitingLines();
+  closeModal();
+  updateHUD();
+  notifyScore(`${item.title}已使用`, { type: "achievement", duration: 1800 });
+  return true;
+}
+
+function renderTileOverview() {
+  const groups = [
+    ["萬子", CORE_TILES.filter(tile => tile.suit === "wan")],
+    ["筒子", CORE_TILES.filter(tile => tile.suit === "tong")],
+    ["條子", CORE_TILES.filter(tile => tile.suit === "suo")],
+    ["字牌", CORE_TILES.filter(tile => tile.group)]
+  ];
+  elements.tileOverviewGrid.innerHTML = groups.map(([title, tiles]) => `<section><h3>${title}</h3><div>${tiles.map(tile => `<span class="overview-tile${isOfficiallyDrawn(tile.id) ? " acquired" : ""}" aria-label="${tile.label}${isOfficiallyDrawn(tile.id) ? "，已取得" : "，未取得"}">${tile.glyph}</span>`).join("")}</div></section>`).join("");
+}
+
+function showTileOverview(event) {
+  if (game.state !== GAME_STATES.DRAWING || game.busy || game.uiOverlayOpen) return;
+  event.currentTarget.setPointerCapture?.(event.pointerId);
+  renderTileOverview();
+  elements.tileOverviewOverlay.classList.add("open");
+  elements.tileOverviewOverlay.setAttribute("aria-hidden", "false");
+}
+
+function hideTileOverview() {
+  elements.tileOverviewOverlay.classList.remove("open");
+  elements.tileOverviewOverlay.setAttribute("aria-hidden", "true");
 }
 
 function tileContent(tile) {
@@ -460,6 +623,11 @@ function updateWaitingLines() {
     game.stats.waitingCount += newlyWaiting.length;
     const label = newlyWaiting.length === 1 ? "聽牌！" : newlyWaiting.length === 2 ? "雙聽！" : `聽牌 ×${newlyWaiting.length}`;
     notifyScore(label, true);
+    if (hasItem("chance-maker") && !game.round.chanceMakerTriggered) {
+      game.round.chanceMakerTriggered = true;
+      addRoundPoints(5);
+      notifyScore("嗆司Maker！第一次聽牌 +5 分", { type: "achievement", duration: 2200 });
+    }
   }
 }
 
@@ -781,6 +949,7 @@ function finishSpecialEvent() {
 }
 
 function restartCurrentRound() {
+  hideTileOverview();
   const previous = game.round;
   rollbackRoundOutcomeStats(previous);
   const replacement = createRound(previous.config.formalDrawCount, previous.preRound.eventOptions);
@@ -969,6 +1138,8 @@ function updateHUD() {
   elements.playerDisplay.textContent = game.playerName;
   const uiLocked = game.busy || game.uiOverlayOpen;
   elements.helpButton.disabled = uiLocked || game.state !== GAME_STATES.DRAWING;
+  elements.itemStatusButton.disabled = uiLocked || game.state !== GAME_STATES.DRAWING;
+  elements.tilePeekButton.disabled = uiLocked || game.state !== GAME_STATES.DRAWING;
   elements.mainMenuButton.disabled = uiLocked || ![GAME_STATES.PRE_ROUND, GAME_STATES.DRAWING].includes(game.state);
   const playArea = elements.board.closest(".play-area");
   [1, 2, 3, 4, 6].forEach(value => playArea.classList.toggle(`board-multiplier-${value}`, multiplier === value));
@@ -1136,6 +1307,7 @@ function savePlayerName(name) {
 function resetGame() {
   const playerName = game.playerName;
   game = freshGameState(playerName);
+  hideTileOverview();
   elements.startScreen.classList.add("hidden");
   elements.gameShell.classList.remove("hidden");
   startRound();
@@ -1151,6 +1323,7 @@ function startGame() {
   }
   elements.playerNameError.textContent = "";
   game = freshGameState(playerName);
+  hideTileOverview();
   elements.startScreen.classList.add("hidden");
   elements.gameShell.classList.remove("hidden");
   startRound();
@@ -1186,9 +1359,13 @@ function returnToMainMenu() {
 }
 
 elements.helpButton.addEventListener("click", openHelp);
+elements.itemStatusButton.addEventListener("click", openItemStatus);
 elements.drawStack.addEventListener("click", drawTile);
 elements.mainMenuButton.addEventListener("click", requestMainMenu);
 elements.startRoundButton.addEventListener("click", commitRoundConfiguration);
+elements.preRoundSkipButton.addEventListener("click", selectPreRoundSkip);
+elements.tilePeekButton.addEventListener("pointerdown", showTileOverview);
+["pointerup", "pointercancel", "pointerleave", "lostpointercapture"].forEach(type => elements.tilePeekButton.addEventListener(type, hideTileOverview));
 document.querySelector("#start-game-button").addEventListener("click", startGame);
 elements.playerNameInput.addEventListener("input", () => {
   elements.playerNameError.textContent = "";

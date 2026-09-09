@@ -41,6 +41,7 @@
       <section class="pre-round-section" aria-labelledby="pre-round-event-title">
         <h3 id="pre-round-event-title">場中事件 <small>每局隨機三選一</small></h3>
         <div id="pre-round-event-options" class="pre-round-event-options"></div>
+        <button id="pre-round-skip-button" class="pre-round-skip-button" type="button" aria-pressed="false">這局不選事件</button>
       </section>
       <section class="pre-round-section" aria-labelledby="pre-round-leverage-title">
         <h3 id="pre-round-leverage-title">開槓桿</h3>
@@ -54,7 +55,9 @@
       <div id="board" class="board" role="grid" aria-label="六乘六麻將對獎盤"></div>
       <p id="message" class="message" aria-live="polite"></p>
       <section class="draw-zone" aria-label="摸牌操作">
+        <button id="item-status-button" class="side-action-button" type="button">道具 / 狀態</button>
         <button id="draw-stack" class="draw-button" type="button">摸牌 (15)</button>
+        <button id="tile-peek-button" class="side-action-button" type="button">已抽牌型</button>
       </section>
       <nav class="game-actions" aria-label="遊戲功能">
         <button id="help-button" class="guide-button" type="button">說明</button>
@@ -62,6 +65,12 @@
       </nav>
     </section>
   </main>
+
+  <div id="tile-overview-overlay" class="tile-overview-overlay" aria-hidden="true">
+    <div class="tile-overview-card" role="status" aria-label="已抽牌型快速檢視">
+      <p>QUICK PEEK</p><h2>已抽牌型</h2><div id="tile-overview-grid" class="tile-overview-grid"></div>
+    </div>
+  </div>
 
   <div id="final-waiting-overlay" class="final-waiting-overlay" aria-hidden="true">
     <div class="final-waiting-card" role="status" aria-live="assertive">
