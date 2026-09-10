@@ -73,7 +73,7 @@ function freshGameState(playerName = "") {
 function getPreRoundEventWeight(event) { return event.type === "ITEM" ? ITEM_DEFINITIONS.length : 1; }
 
 function drawPreRoundEvents(random = Math.random) {
-  const pool = [...PRE_ROUND_EVENT_DEFINITIONS];
+  const pool = PRE_ROUND_EVENT_DEFINITIONS.filter(event => event.enabled !== false);
   const selected = [];
   while (selected.length < 3 && pool.length) {
     const event = weightedRandom(pool, random(), getPreRoundEventWeight);
@@ -91,7 +91,7 @@ function createRound(formalDrawCount = RULES.baseFormalDrawCount, eventOptions =
     board, formalDrawCount, hand: order.slice(0, formalDrawCount), remaining: order.slice(formalDrawCount), drawIndex: 0, drawn: new Set(), discarded: new Set(), started: false, attemptStart: game.attemptsConsumed,
     preRound: { eventOptions, eventSelectionType: "UNSELECTED", selectedEventId: null, selectedLeverage: 1 }, config: null, committed: false,
     completedLines: new Set(), activeWaiting: new Set(), announcedWaiting: new Set(), everWaitingLines: new Set(), achievements: new Set(),
-    rawPoints: 0, roundScore: 0, roundLines: 0, roundMultiplier: 1, finalMultiplier: 1, leverageConfigured: false, betSettled: false, betResult: null, everWaited: false, waitingAnnouncements: 0, chanceMakerTriggered: false, pendingItemId: null, itemRevealConfirmed: false,
+    rawPoints: 0, roundScore: 0, roundLines: 0, roundMultiplier: 1, finalMultiplier: 1, leverageConfigured: false, betSettled: false, betResult: null, everWaited: false, waitingAnnouncements: 0, chanceMakerTriggered: false, pendingItemId: null, itemRevealConfirmed: false, rpsResult: null,
     pointsSettled: false, multiplierPoints: 0, actualMultiplierPoints: 0, betNetPoints: 0, finalRoundChange: 0, scoreBeforeSettlement: 0, eventAttemptDelta: 0, eventAddedAttempts: 0,
     bonusMissing: new Set(), bonusCandidates: [], selectedBonusTiles: [], bonusResolved: false, bonusPendingStarted: false, bonusAttemptGain: 0
   };
@@ -336,18 +336,39 @@ function openRockPaperScissors(event, leverage, message = "請選擇你的出拳
   elements.modalBody.querySelectorAll("[data-rps-choice]").forEach(button => button.addEventListener("click", () => playRockPaperScissors(event, leverage, button.dataset.rpsChoice)));
 }
 
+function determineRockPaperScissorsResult(playerChoice, bossChoice) {
+  if (playerChoice === bossChoice) return "TIE";
+  const won = (playerChoice === "rock" && bossChoice === "scissors") || (playerChoice === "scissors" && bossChoice === "paper") || (playerChoice === "paper" && bossChoice === "rock");
+  return won ? "WIN" : "LOSE";
+}
+
 function playRockPaperScissors(event, leverage, playerChoice) {
-  if (game.state !== GAME_STATES.COMMITTING || game.round.config) return;
+  if (game.state !== GAME_STATES.COMMITTING || game.round.config || game.round.rpsResult) return false;
   const choices = ["rock", "scissors", "paper"];
   const labels = { rock: "石頭", scissors: "剪刀", paper: "布" };
+  if (!choices.includes(playerChoice)) return false;
   const bossChoice = choices[Math.floor(Math.random() * choices.length)];
-  if (playerChoice === bossChoice) {
-    openRockPaperScissors(event, leverage, `你和老闆都出${labels[playerChoice]}，平手，再猜一次！`);
-    return;
+  const outcome = determineRockPaperScissorsResult(playerChoice, bossChoice);
+  game.round.rpsResult = Object.freeze({ playerChoice, bossChoice, outcome });
+  const resultText = { WIN: "猜贏了！", LOSE: "猜輸了！", TIE: "平手！" }[outcome];
+  const detailText = { WIN: "老闆加碼倍率 ×2！", LOSE: "倍率不變", TIE: "再猜一次！" }[outcome];
+  openModal({
+    icon: "拳", kicker: "猜拳結果", title: resultText,
+    body: `<div class="rps-result rps-result-${outcome.toLowerCase()}"><div><small>玩家</small><b>${labels[playerChoice]}</b></div><strong>VS</strong><div><small>老闆</small><b>${labels[bossChoice]}</b></div><p>${detailText}</p></div>`,
+    actions: [{ label: outcome === "TIE" ? "再猜一次" : "進入牌局", action: () => completeRockPaperScissorsPresentation(event, leverage) }]
+  });
+  return game.round.rpsResult;
+}
+
+function completeRockPaperScissorsPresentation(event, leverage) {
+  if (game.state !== GAME_STATES.COMMITTING || game.round.config || !game.round.rpsResult) return false;
+  const result = game.round.rpsResult;
+  if (result.outcome === "TIE") {
+    game.round.rpsResult = null;
+    openRockPaperScissors(event, leverage, "平手，再猜一次！");
+    return true;
   }
-  const won = (playerChoice === "rock" && bossChoice === "scissors") || (playerChoice === "scissors" && bossChoice === "paper") || (playerChoice === "paper" && bossChoice === "rock");
-  notifyScore(`你出${labels[playerChoice]}，老闆出${labels[bossChoice]}：${won ? "勝利 ×2" : "落敗 ×0.5"}`, { type: won ? "achievement" : "default", duration: 2200 });
-  finalizeRoundConfiguration(event, leverage, won ? 2 : 0.5);
+  return finalizeRoundConfiguration(event, leverage, result.outcome === "WIN" ? 2 : 1);
 }
 
 function attemptsRemaining() { return Math.max(0, game.totalAttemptsGranted - game.attemptsConsumed); }

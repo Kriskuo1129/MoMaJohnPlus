@@ -67,7 +67,8 @@ const source = `${fs.readFileSync(path.join(root, "game-config.js"), "utf8")}\n$
 globalThis.phase1CTest = {
   definitions: PRE_ROUND_EVENT_DEFINITIONS,
   inRoundEvents: EVENT_DEFINITIONS,
-  drawOptions: () => drawPreRoundEvents().map(event => event.id),
+  drawOptions: (random = Math.random) => drawPreRoundEvents(random).map(event => event.id),
+  preRoundWeight(eventId) { return getPreRoundEventWeight(PRE_ROUND_EVENT_DEFINITIONS.find(event => event.id === eventId)); },
   commit(eventId, leverage = 1) {
     game = freshGameState("TEST");
     const event = PRE_ROUND_EVENT_DEFINITIONS.find(item => item.id === eventId);
@@ -90,10 +91,33 @@ globalThis.phase1CTest = {
     game.state = GAME_STATES.PRE_ROUND;
     commitRoundConfiguration();
     const original = Math.random;
-    Math.random = () => randomValue;
-    playRockPaperScissors(event, leverage, playerChoice);
+    let randomCalls = 0;
+    Math.random = () => { randomCalls += 1; return randomValue; };
+    const presentation = playRockPaperScissors(event, leverage, playerChoice);
     Math.random = original;
-    return { state: game.state, attemptsConsumed: game.attemptsConsumed, config: game.round.config };
+    const beforeContinue = { state: game.state, attemptsConsumed: game.attemptsConsumed, config: game.round.config };
+    const continued = completeRockPaperScissorsPresentation(event, leverage);
+    const secondContinue = completeRockPaperScissorsPresentation(event, leverage);
+    return { presentation, beforeContinue, continued, secondContinue, randomCalls, state: game.state, attemptsConsumed: game.attemptsConsumed, config: game.round.config, rpsResult: game.round.rpsResult };
+  },
+  rpsTieThenRetry(playerChoice, retryRandomValue, leverage = 1) {
+    game = freshGameState("TEST");
+    const event = PRE_ROUND_EVENT_DEFINITIONS.find(item => item.id === "rock-paper-scissors");
+    game.round = createRound(RULES.baseFormalDrawCount, [event]);
+    game.round.preRound.eventSelectionType = "EVENT";
+    game.round.preRound.selectedEventId = event.id;
+    game.round.preRound.selectedLeverage = leverage;
+    game.state = GAME_STATES.PRE_ROUND;
+    commitRoundConfiguration();
+    const original = Math.random;
+    Math.random = () => 0;
+    const tie = playRockPaperScissors(event, leverage, playerChoice);
+    completeRockPaperScissorsPresentation(event, leverage);
+    Math.random = () => retryRandomValue;
+    const retry = playRockPaperScissors(event, leverage, playerChoice);
+    Math.random = original;
+    completeRockPaperScissorsPresentation(event, leverage);
+    return { tie, retry, state: game.state, attemptsConsumed: game.attemptsConsumed, config: game.round.config };
   },
   settle(eventId, won, startingScore = 100) {
     game = freshGameState("TEST");
@@ -153,6 +177,7 @@ const api = context.phase1CTest;
 
 assert.equal(api.definitions.filter(event => event.type === "BET").length, 9);
 assert.equal(api.definitions.filter(event => event.type === "SPECIAL").length, 6);
+assert.equal(api.definitions.filter(event => event.type === "SPECIAL" && event.enabled !== false).length, 5);
 assert.equal(api.definitions.filter(event => event.type === "ITEM").length, 1);
 assert.equal(new Set(api.definitions.map(event => event.id)).size, 16);
 assert.equal(api.definitions.some(event => event.id === "open-eye" || event.title === "大開天眼" || event.effectKey === "CHOOSE_FIRST_TILE"), false);
@@ -161,6 +186,15 @@ for (let index = 0; index < 100; index += 1) {
   assert.equal(options.length, 3);
   assert.equal(new Set(options).size, 3);
 }
+const bossBoost = api.definitions.find(event => event.id === "boss-boost");
+assert.ok(bossBoost);
+assert.equal(bossBoost.enabled, false);
+assert.equal(bossBoost.multiplier, 2);
+assert.equal(api.preRoundWeight("mystery-gift"), 10);
+const deterministicPoolIds = new Set();
+for (let index = 0; index < 1000; index += 1) api.drawOptions(() => (index + 0.5) / 1000).forEach(id => deterministicPoolIds.add(id));
+assert.equal(deterministicPoolIds.has("boss-boost"), false);
+for (const id of ["rock-paper-scissors", "more-tiles", "boss-leverage", "pearl-baby", "home-team-wins"]) assert.equal(deterministicPoolIds.has(id), true, `${id} should remain selectable`);
 assert.equal(api.inRoundEvents.some(event => event.id === "double-round" || event.effectType === "DOUBLE_FINAL_MULTIPLIER"), false);
 
 const base = api.commit("chiikawa", 2);
@@ -188,11 +222,41 @@ assert.equal(api.commit("home-team-wins").config.forcedMiniGame13, "nine-grid");
 assert.equal(api.commit("home-team-wins").config.excludedMiniGame8, "nine-grid");
 
 const rpsTie = api.rps("rock", 0);
+assert.equal(rpsTie.presentation.outcome, "TIE");
+assert.equal(rpsTie.beforeContinue.state, "COMMITTING");
+assert.equal(rpsTie.beforeContinue.config, null);
+assert.equal(rpsTie.beforeContinue.attemptsConsumed, 0);
 assert.equal(rpsTie.state, "COMMITTING");
 assert.equal(rpsTie.config, null);
-assert.equal(rpsTie.attemptsConsumed, 0);
-assert.equal(api.rps("rock", 0.4, 3).config.finalMultiplier, 6);
-assert.equal(api.rps("rock", 0.8, 3).config.finalMultiplier, 1.5);
+assert.equal(rpsTie.rpsResult, null);
+assert.equal(rpsTie.randomCalls, 1);
+
+const rpsWin = api.rps("rock", 0.4, 3);
+assert.equal(rpsWin.presentation.outcome, "WIN");
+assert.equal(rpsWin.beforeContinue.config, null);
+assert.equal(rpsWin.beforeContinue.attemptsConsumed, 0);
+assert.equal(rpsWin.config.specialMultiplier, 2);
+assert.equal(rpsWin.config.finalMultiplier, 6);
+assert.equal(rpsWin.attemptsConsumed, 3);
+assert.equal(rpsWin.randomCalls, 1);
+assert.equal(rpsWin.continued, true);
+assert.equal(rpsWin.secondContinue, false);
+
+const rpsLose = api.rps("rock", 0.8, 3);
+assert.equal(rpsLose.presentation.outcome, "LOSE");
+assert.equal(rpsLose.beforeContinue.config, null);
+assert.equal(rpsLose.config.specialMultiplier, 1);
+assert.equal(rpsLose.config.finalMultiplier, 3);
+assert.notEqual(rpsLose.config.specialMultiplier, 0.5);
+assert.equal(rpsLose.attemptsConsumed, 3);
+assert.equal(rpsLose.randomCalls, 1);
+assert.equal(rpsLose.secondContinue, false);
+
+const rpsRetry = api.rpsTieThenRetry("rock", 0.4, 2);
+assert.equal(rpsRetry.tie.outcome, "TIE");
+assert.equal(rpsRetry.retry.outcome, "WIN");
+assert.equal(rpsRetry.state, "DRAWING");
+assert.equal(rpsRetry.attemptsConsumed, 2);
 
 const winningBet = api.settle("chiikawa", true);
 assert.equal(JSON.stringify(winningBet), JSON.stringify({ score: 115, won: true, points: 15, betsPlaced: 1 }));
