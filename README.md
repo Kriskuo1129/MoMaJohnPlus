@@ -21,12 +21,12 @@ MoMaJohnPlus 是由原始 [MoMaJohn](https://github.com/Kriskuo1129/MoMaJohn) �
 
 - 建立「場」與「局」的完整遊戲結構。
 - 重新整理局中事件分類與效果。
-- Phase 2 已在每局正式第 13 張加入一次小遊戲機會，可選擇進入 Placeholder 或直接摸牌；兩條路徑都取得同一張正式牌。
+- Phase 2 已在每局正式第 13 張加入一次小遊戲機會；直接摸牌會立即普通隨機摸牌，挑戰失敗需在 Result Card 按「摸牌」，挑戰成功則可從合法剩餘牌自選一張。選牌時可查看唯讀縮小棋盤與 34 張已抽牌型。
 - Phase 3 將實作彈珠台、棒球九宮格、記憶力對對碰三款真正玩法；大頭貼與其他互動另行規劃。
 
 完整設計與階段規劃請參閱 [GAME_SPEC.md](GAME_SPEC.md) 及 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)。
 
-目前 PRE_ROUND 每局會從正式 Pool 隨機抽出三個不重複選項，玩家也可明確放棄事件；兩種選擇都能搭配合法槓桿。場中下注於局末獨立結算且不乘倍率；場中特殊可調整倍率、正式牌數或本局規則；選擇「神秘禮物到來」並 Commit 後才會抽取 Item，先揭曉內容，再由玩家收下；Item 欄滿三格時則由揭曉進入強制替換。「珠珠寶貝」與「當地球隊贏球」目前只 Commit Phase 2 所需的小遊戲 Constraint，尚未執行小遊戲。
+目前 PRE_ROUND 每局會從正式 Pool 隨機抽出三個不重複選項，玩家也可明確放棄事件；兩種選擇都能搭配合法槓桿。場中下注於局末獨立結算且不乘倍率；場中特殊可調整倍率、正式牌數或本局規則；選擇「神秘禮物到來」並 Commit 後才會抽取 Item，先揭曉內容，再由玩家收下；Item 欄滿三格時則由揭曉進入強制替換。「珠珠寶貝」與「當地球隊贏球」會分別指定第 13 張提供彈珠台與棒球九宮格。
 
 ## 本機執行
 
@@ -50,7 +50,7 @@ python -m http.server 8000
 
 ## Legacy Gameplay baseline
 
-目前可執行版本已完成 Phase 1-A～1-E 與 Phase 2 Mini-game Framework：玩家每局先從三張正式場中事件選一張並選擇槓桿，按下「開牌局」後才 Commit、扣除局數，依 committed config 進行 14／15／16 張正式摸牌。正式第 13 張會提供三款小遊戲之一，玩家可進入 Placeholder 或直接摸牌；小遊戲只從主牌局提供的剩餘合法牌中回傳 `tileId`，並共用正式取得牌流程。
+目前可執行版本已完成 Phase 1-A～1-E 與 Phase 2 Mini-game Framework：玩家每局先從三張正式場中事件選一張並選擇槓桿，按下「開牌局」後才 Commit、扣除局數，依 committed config 進行 14／15／16 張正式摸牌。正式第 13 張會提供三款小遊戲之一；小遊戲只回傳 success／failure，成功使用 Shared Tile Picker 自選牌，失敗由玩家在 Result Card 確認普通摸牌，直接摸牌則立即使用普通 RNG，最後統一經正式取得牌流程。
 
 原始文件：
 

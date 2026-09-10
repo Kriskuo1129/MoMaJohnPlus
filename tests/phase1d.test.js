@@ -207,7 +207,7 @@ globalThis.phase1DTest = {
     const opened = beginPocketItemUse(0);
     const modal = { body: elements.modalBody.innerHTML, title: elements.modalTitle.textContent, icon: elements.modalIcon.textContent };
     const before = { items: [...game.items], drawn: [...game.round.drawn], order: [...game.round.hand, ...game.round.remaining].map(tile => tile.id) };
-    if (selectedId) completePocketItemUse(0, selectedId); else cancelPocketItemUse();
+    if (selectedId) completePocketItemUse(0, selectedId); else cancelTilePicker();
     return { candidates, opened, modal, before, after: { items: [...game.items], drawn: [...game.round.drawn], order: [...game.round.hand, ...game.round.remaining].map(tile => tile.id) }, target: item.targetTileId };
   },
   pocketWithoutCandidate() {
@@ -350,12 +350,12 @@ assert.equal(api.pocket("pocket-green", "event-1").used, false);
 const selectedPocket = api.pocketSelection("pocket-red", ["wan-1", "wan-5", "event-1"], "wan-5");
 assert.equal(JSON.stringify(selectedPocket.candidates), '["wan-1","wan-5"]');
 assert.equal(selectedPocket.opened, true);
-assert.match(selectedPocket.modal.title, /選一張牌換成中/);
-assert.equal(selectedPocket.modal.icon, "");
-assert.match(selectedPocket.modal.body, /class="hand-tile revealed"[^>]*data-item-source-id="wan-1"/);
-assert.match(selectedPocket.modal.body, /class="hand-tile revealed"[^>]*data-item-source-id="wan-5"/);
-assert.doesNotMatch(selectedPocket.modal.body, /data-item-source-id="event-1"/);
-assert.doesNotMatch(selectedPocket.modal.body, /data-item-source-id="tong-9"/);
+assert.equal(selectedPocket.modal.title, "口袋中的中");
+assert.equal(selectedPocket.modal.icon, "🀄");
+assert.match(selectedPocket.modal.body, /class="hand-tile revealed"[^>]*data-picker-tile-id="wan-1"/);
+assert.match(selectedPocket.modal.body, /class="hand-tile revealed"[^>]*data-picker-tile-id="wan-5"/);
+assert.doesNotMatch(selectedPocket.modal.body, /data-picker-tile-id="event-1"/);
+assert.doesNotMatch(selectedPocket.modal.body, /data-picker-tile-id="tong-9"/);
 assert.equal(selectedPocket.after.items.length, 0);
 assert.equal(selectedPocket.after.drawn.includes("wan-1"), true);
 assert.equal(selectedPocket.after.drawn.includes("wan-5"), false);
@@ -385,7 +385,8 @@ assert.equal(overview.uiUnlocked, true);
 assert.equal(overview.restartClosed, true);
 assert.equal(overview.hidden, "true");
 assert.equal((overview.html.match(/class="overview-tile/g) || []).length, 34);
-assert.equal(overview.html.includes("事件 A"), false);
+assert.match(overview.html, /mini-board-tile[^>]*event-tile[^>]*aria-label="事件 A/);
+assert.doesNotMatch(overview.html, /overview-tile[^>]*aria-label="事件 A/);
 assert.match(overview.html, /overview-tile acquired[^>]*aria-label="一萬，已取得"/);
 assert.match(pageHtml, /id="tile-overview-close"[^>]*>關閉<\/button>/);
 assert.doesNotMatch(gameSource, /tilePeekButton\.addEventListener\("pointerdown"/);

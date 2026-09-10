@@ -1,6 +1,6 @@
 const GAME_STATES = Object.freeze({
   READY: "READY", PRE_ROUND: "PRE_ROUND", COMMITTING: "COMMITTING", DRAWING: "DRAWING",
-  MINIGAME_OFFER: "MINIGAME_OFFER", MINIGAME_ACTIVE: "MINIGAME_ACTIVE",
+  MINIGAME_OFFER: "MINIGAME_OFFER", MINIGAME_ACTIVE: "MINIGAME_ACTIVE", MINIGAME_REWARD: "MINIGAME_REWARD",
   EVENT_REVEAL: "EVENT_REVEAL", BONUS_PENDING: "BONUS_PENDING", BONUS_DRAW: "BONUS_DRAW",
   ROUND_END: "ROUND_END", GAME_OVER: "GAME_OVER"
 });
@@ -93,7 +93,7 @@ function createRound(formalDrawCount = RULES.baseFormalDrawCount, eventOptions =
     preRound: { eventOptions, eventSelectionType: "UNSELECTED", selectedEventId: null, selectedLeverage: 1 }, config: null, committed: false,
     completedLines: new Set(), activeWaiting: new Set(), announcedWaiting: new Set(), everWaitingLines: new Set(), achievements: new Set(),
     rawPoints: 0, roundScore: 0, roundLines: 0, roundMultiplier: 1, finalMultiplier: 1, leverageConfigured: false, betSettled: false, betResult: null, everWaited: false, waitingAnnouncements: 0, chanceMakerTriggered: false, pendingItemId: null, itemRevealConfirmed: false, rpsResult: null,
-    miniGame: { offered: false, completed: false, selectedId: null, remainingTiles: [] },
+    miniGame: { offered: false, completed: false, selectedId: null, challengeResult: null, challengeResolved: false, failureDrawStarted: false }, tilePicker: null,
     pointsSettled: false, multiplierPoints: 0, actualMultiplierPoints: 0, betNetPoints: 0, finalRoundChange: 0, scoreBeforeSettlement: 0, eventAttemptDelta: 0, eventAddedAttempts: 0,
     bonusMissing: new Set(), bonusCandidates: [], selectedBonusTiles: [], bonusResolved: false, bonusPendingStarted: false, bonusAttemptGain: 0
   };
@@ -439,12 +439,15 @@ function beginPocketItemUse(index) {
     return false;
   }
   const target = GAME_TILES.find(tile => tile.id === item.targetTileId);
-  openModal({ icon: "換", kicker: item.title, title: `選一張牌換成${target.label}`, body: `<p>選擇一張已取得的普通麻將進行替換。</p><div class="item-tile-options">${candidates.map(tile => `<button type="button" class="hand-tile revealed" data-item-source-id="${tile.id}" aria-label="${tile.label}">${tileContent(tile)}</button>`).join("")}</div>`, actions: [{ label: "取消", className: "secondary", action: cancelPocketItemUse }] });
-  elements.modalBody.querySelectorAll("[data-item-source-id]").forEach(button => button.addEventListener("click", () => completePocketItemUse(index, button.dataset.itemSourceId)));
+  openTilePicker({
+    title: item.title, message: `選擇一張要替換成${target.label}的牌`, tiles: candidates,
+    confirmText: "替換", allowOverview: true, allowCancel: true,
+    onConfirm: tileId => completePocketItemUse(index, tileId), onCancel: reopenItemStatus
+  });
   return true;
 }
 
-function cancelPocketItemUse() { game.uiOverlayOpen = false; closeModal(); openItemStatus(); }
+function reopenItemStatus() { openItemStatus(); }
 
 function swapTileIds(collection, firstId, secondId) {
   const firstIndex = collection.findIndex(tile => tile.id === firstId);
@@ -466,12 +469,11 @@ function completePocketItemUse(index, sourceTileId) {
   game.round.drawn.delete(sourceTileId);
   game.round.drawn.add(targetTileId);
   game.items.splice(index, 1);
-  game.uiOverlayOpen = false;
+  closeTilePicker();
   renderBoard();
   scoreLines();
   scoreCollections();
   updateWaitingLines();
-  closeModal();
   updateHUD();
   notifyScore(`${item.title}已使用`, { type: "achievement", duration: 1800 });
   return true;
@@ -484,12 +486,34 @@ function renderTileOverview() {
     ["條子", CORE_TILES.filter(tile => tile.suit === "suo")],
     ["字牌", CORE_TILES.filter(tile => tile.group)]
   ];
-  elements.tileOverviewGrid.innerHTML = groups.map(([title, tiles]) => `<section><h3>${title}</h3><div>${tiles.map(tile => `<span class="overview-tile${isOfficiallyDrawn(tile.id) ? " acquired" : ""}" aria-label="${tile.label}${isOfficiallyDrawn(tile.id) ? "，已取得" : "，未取得"}">${tile.glyph}</span>`).join("")}</div></section>`).join("");
+  elements.tileOverviewGrid.innerHTML = `<section class="mini-board-overview"><h3>目前棋盤</h3>${renderMiniBoardOverview()}</section><div class="ordinary-tile-overview"><h3>已抽牌型</h3>${groups.map(([title, tiles]) => `<section><h3>${title}</h3><div>${tiles.map(tile => `<span class="overview-tile${isOfficiallyDrawn(tile.id) ? " acquired" : ""}" aria-label="${tile.label}${isOfficiallyDrawn(tile.id) ? "，已取得" : "，未取得"}">${tile.glyph}</span>`).join("")}</div></section>`).join("")}</div>`;
+}
+
+function miniBoardTileStateClass(tile, index) {
+  const lineClasses = LINE_DEFINITIONS.filter(line => line.indexes.includes(index)).map(line => game.round.completedLines.has(line.id) ? "mini-line-completed" : game.round.activeWaiting.has(line.id) ? "mini-line-waiting" : "").filter(Boolean);
+  return `${boardTileStateClass(tile)} ${lineClasses.join(" ")}`.trim();
+}
+
+function renderMiniBoardOverview() {
+  const cells = game.round.board.map((tile, index) => {
+    const stateClass = miniBoardTileStateClass(tile, index);
+    const stateLabel = stateClass.includes("tile-discarded") ? "已丟掉" : stateClass.includes("tile-acquired") ? "已取得" : "尚未取得";
+    return `<span class="${tileClass(tile, "mini-board-tile")} ${stateClass}" aria-label="${tile.label}，${stateLabel}" aria-rowindex="${Math.floor(index / 6) + 1}" aria-colindex="${index % 6 + 1}">${tileContent(tile)}</span>`;
+  }).join("");
+  return `<div class="mini-board-grid" role="grid" aria-label="目前棋盤縮圖">${cells}</div>`;
 }
 
 function showTileOverview() {
   if (game.state !== GAME_STATES.DRAWING || game.busy || game.uiOverlayOpen) return;
+  openTileOverview();
+}
+
+function openTileOverview() {
   renderTileOverview();
+  const fromPicker = Boolean(game.round?.tilePicker);
+  const overviewTitle = elements.tileOverviewOverlay.querySelector("#tile-overview-title");
+  if (overviewTitle) overviewTitle.textContent = fromPicker ? "查看牌型" : "已抽牌型";
+  elements.tileOverviewClose.textContent = fromPicker ? "返回選牌" : "關閉";
   game.uiOverlayOpen = true;
   elements.tileOverviewOverlay.classList.add("open");
   elements.tileOverviewOverlay.setAttribute("aria-hidden", "false");
@@ -502,10 +526,81 @@ function hideTileOverview() {
   elements.tileOverviewOverlay.classList.remove("open");
   elements.tileOverviewOverlay.setAttribute("aria-hidden", "true");
   if (wasOpen) {
+    if (game.round?.tilePicker) return renderTilePicker();
     game.uiOverlayOpen = false;
     updateHUD();
     elements.tilePeekButton.focus();
   }
+}
+
+function openTilePicker({ title, message, tiles, confirmText, allowOverview = true, allowCancel = false, onConfirm, onCancel = null }) {
+  if (!game.round || !Array.isArray(tiles)) return false;
+  game.round.tilePicker = {
+    title, message, tiles: tiles.map(tile => tile.id), confirmText, allowOverview, allowCancel,
+    selectedTileId: null, confirming: false, onConfirm, onCancel
+  };
+  game.uiOverlayOpen = true;
+  renderTilePicker();
+  return true;
+}
+
+function renderTilePicker() {
+  const picker = game.round?.tilePicker;
+  if (!picker) return false;
+  const candidates = picker.tiles.map(id => CORE_TILES.find(tile => tile.id === id)).filter(Boolean);
+  const selected = candidates.find(tile => tile.id === picker.selectedTileId);
+  const actions = [];
+  if (picker.allowOverview) actions.push({ label: "查看牌型", className: "secondary", action: showTilePickerOverview });
+  if (picker.allowCancel) actions.push({ label: "取消", className: "secondary", action: cancelTilePicker });
+  actions.push({ label: picker.confirmText, disabled: !selected || picker.confirming, action: confirmTilePicker });
+  openModal({
+    icon: "🀄", kicker: "", title: picker.title,
+    body: `<div class="shared-tile-picker"><p>${picker.message}</p><div class="tile-picker-grid">${candidates.map(tile => `<button type="button" class="hand-tile revealed${tile.id === picker.selectedTileId ? " selected" : ""}" data-picker-tile-id="${tile.id}" aria-pressed="${tile.id === picker.selectedTileId}" aria-label="${tile.label}">${tileContent(tile)}</button>`).join("")}</div><p class="tile-picker-selection">目前選擇：<strong>${selected?.label ?? "尚未選擇"}</strong></p></div>`,
+    actions
+  });
+  elements.modalBody.querySelectorAll("[data-picker-tile-id]").forEach(button => button.addEventListener("click", () => selectTilePickerTile(button.dataset.pickerTileId)));
+  return true;
+}
+
+function selectTilePickerTile(tileId) {
+  const picker = game.round?.tilePicker;
+  if (!picker || picker.confirming || !picker.tiles.includes(tileId)) return false;
+  picker.selectedTileId = tileId;
+  renderTilePicker();
+  return true;
+}
+
+async function confirmTilePicker() {
+  const picker = game.round?.tilePicker;
+  if (!picker || picker.confirming || !picker.selectedTileId || !picker.tiles.includes(picker.selectedTileId)) return false;
+  picker.confirming = true;
+  const confirmed = await picker.onConfirm?.(picker.selectedTileId);
+  if (game.round?.tilePicker === picker && !confirmed) {
+    picker.confirming = false;
+    renderTilePicker();
+  }
+  return confirmed;
+}
+
+function cancelTilePicker() {
+  const picker = game.round?.tilePicker;
+  if (!picker?.allowCancel || picker.confirming) return false;
+  const onCancel = picker.onCancel;
+  closeTilePicker();
+  onCancel?.();
+  return true;
+}
+
+function closeTilePicker() {
+  if (game.round) game.round.tilePicker = null;
+  game.uiOverlayOpen = false;
+  closeModal();
+}
+
+function showTilePickerOverview() {
+  if (!game.round?.tilePicker) return false;
+  openTileOverview();
+  return true;
 }
 
 function tileContent(tile) {
@@ -603,7 +698,6 @@ function openMiniGameOffer() {
   if (!definition) return false;
   game.round.miniGame.offered = true;
   game.round.miniGame.selectedId = definition.id;
-  game.round.miniGame.remainingTiles = getRemainingFormalTiles().map(tile => tile.id);
   game.state = GAME_STATES.MINIGAME_OFFER;
   openModal({
     icon: "🎮", kicker: "小遊戲Time", title: "決定自己命運的機會！",
@@ -617,36 +711,99 @@ function openMiniGameOffer() {
 }
 
 function startMiniGame() {
-  if (game.state !== GAME_STATES.MINIGAME_OFFER || game.round.miniGame.completed) return false;
+  if (game.state !== GAME_STATES.MINIGAME_OFFER || game.round.miniGame.completed || game.round.miniGame.challengeResolved) return false;
   const definition = MINIGAME_DEFINITIONS[game.round.miniGame.selectedId];
   if (!definition?.enabled) return directDrawMiniGameTile();
   game.state = GAME_STATES.MINIGAME_ACTIVE;
   openModal({
     icon: "🎮", kicker: "", title: definition.name,
-    body: `<article class="minigame-placeholder"><p>小遊戲施工中！</p><span>這次先模擬取得一張牌。</span></article>`,
-    actions: [{ label: "取得牌", action: () => resolveMiniGame(runPlaceholderMiniGame(game.round.miniGame.remainingTiles)) }]
+    body: `<article class="minigame-placeholder"><p>小遊戲施工中！</p><span>這次先模擬挑戰結果。</span></article>`,
+    actions: [{ label: "開始模擬挑戰", action: () => resolveMiniGameChallenge(runMiniGamePlaceholder()) }]
   });
   return true;
 }
 
-function runPlaceholderMiniGame(remainingTileIds, random = Math.random) {
-  const snapshot = [...remainingTileIds];
-  return { tileId: snapshot[Math.floor(random() * snapshot.length)] ?? null };
+function runMiniGamePlaceholder(random = Math.random) {
+  return { success: random() < 0.5 };
 }
 
 function directDrawMiniGameTile() {
-  if (game.state !== GAME_STATES.MINIGAME_OFFER || game.round.miniGame.completed) return false;
-  return resolveMiniGame({ tileId: selectRandomRemainingTile(getRemainingFormalTiles())?.id ?? null });
+  if (game.state !== GAME_STATES.MINIGAME_OFFER || game.round.miniGame.completed || game.round.miniGame.challengeResolved) return false;
+  game.round.miniGame.challengeResolved = true;
+  game.round.miniGame.challengeResult = "DIRECT";
+  return completeRandomMiniGameDraw();
 }
 
-async function resolveMiniGame(result) {
-  if (![GAME_STATES.MINIGAME_OFFER, GAME_STATES.MINIGAME_ACTIVE].includes(game.state) || game.round.miniGame.completed) return false;
+function resolveMiniGameChallenge(result) {
+  if (game.state !== GAME_STATES.MINIGAME_ACTIVE || game.round.miniGame.completed || game.round.miniGame.challengeResolved || typeof result?.success !== "boolean") return false;
+  game.round.miniGame.challengeResolved = true;
+  game.round.miniGame.challengeResult = result.success ? "SUCCESS" : "FAILURE";
+  if (!result.success) {
+    openModal({
+      icon: "🎮", kicker: "", title: "挑戰失敗",
+      body: "<p>很可惜，這次沒有獲得自選牌的機會。</p>",
+      actions: [{ label: "摸牌", action: completeFailureMiniGameDraw }]
+    });
+    return true;
+  }
+  notifyScore("挑戰成功！選一張你想要的牌", { type: "achievement", duration: 1800 });
+  return openMiniGameRewardPicker();
+}
+
+function completeFailureMiniGameDraw() {
+  const miniGame = game.round?.miniGame;
+  if (game.state !== GAME_STATES.MINIGAME_ACTIVE || miniGame?.challengeResult !== "FAILURE" || miniGame.completed || miniGame.failureDrawStarted) return false;
+  miniGame.failureDrawStarted = true;
+  return completeRandomMiniGameDraw();
+}
+
+function completeRandomMiniGameDraw() {
   const legalTiles = getRemainingFormalTiles();
-  const requested = legalTiles.find(tile => tile.id === result?.tileId);
-  const selected = requested ?? selectRandomRemainingTile(legalTiles);
+  const selected = selectRandomRemainingTile(legalTiles) ?? nextFormalTile();
   if (!selected || !placeTileAtNextFormalDraw(selected.id)) return false;
+  return completeMiniGameFormalDraw(selected);
+}
+
+function openMiniGameRewardPicker() {
+  if (game.state !== GAME_STATES.MINIGAME_ACTIVE || game.round.miniGame.challengeResult !== "SUCCESS" || game.round.miniGame.completed) return false;
+  const candidates = getRemainingFormalTiles();
+  if (!candidates.length) {
+    console.warn("Mini-game reward has no legal tile candidates; using safe normal draw recovery.");
+    return completeRandomMiniGameDraw();
+  }
+  game.state = GAME_STATES.MINIGAME_REWARD;
+  openTilePicker({
+    title: "挑戰成功！", message: "選一張你想要的牌", tiles: candidates,
+    confirmText: "決定", allowOverview: true, allowCancel: false,
+    onConfirm: confirmMiniGameReward
+  });
+  return true;
+}
+
+async function confirmMiniGameReward(tileId) {
+  if (game.state !== GAME_STATES.MINIGAME_REWARD || game.round.miniGame.completed) return false;
+  const selected = getRemainingFormalTiles().find(tile => tile.id === tileId);
+  if (!selected) {
+    const candidates = getRemainingFormalTiles();
+    if (!candidates.length) {
+      console.warn("Mini-game reward selection became empty; using safe normal draw recovery.");
+      closeTilePicker();
+      return completeRandomMiniGameDraw();
+    }
+    game.round.tilePicker.tiles = candidates.map(tile => tile.id);
+    game.round.tilePicker.selectedTileId = null;
+    game.round.tilePicker.message = "原選擇已不可用，請重新選擇。";
+    renderTilePicker();
+    return false;
+  }
+  if (!placeTileAtNextFormalDraw(selected.id)) return false;
+  closeTilePicker();
+  return completeMiniGameFormalDraw(selected);
+}
+
+async function completeMiniGameFormalDraw(selected) {
+  if (game.round.miniGame.completed) return false;
   game.round.miniGame.completed = true;
-  game.round.miniGame.remainingTiles = [];
   game.state = GAME_STATES.DRAWING;
   closeModal();
   await acquireFormalTile(selected);
@@ -655,8 +812,8 @@ async function resolveMiniGame(result) {
 
 function clearMiniGameLifecycle() {
   if (!game.round?.miniGame) return;
-  game.round.miniGame.remainingTiles = [];
-  if ([GAME_STATES.MINIGAME_OFFER, GAME_STATES.MINIGAME_ACTIVE].includes(game.state)) game.round.miniGame.completed = true;
+  game.round.tilePicker = null;
+  if ([GAME_STATES.MINIGAME_OFFER, GAME_STATES.MINIGAME_ACTIVE, GAME_STATES.MINIGAME_REWARD].includes(game.state)) game.round.miniGame.completed = true;
 }
 
 async function drawTile() {

@@ -82,7 +82,7 @@ Phase 1-C 已將 Placeholder 替換為 `PRE_ROUND_EVENT_DEFINITIONS` 正式 Pool
 
 正式 Mini-game Registry：彈珠台、棒球九宮格、記憶力對對碰。
 
-Phase 2 在玩家準備取得正式第 13 張時顯示不可略過關閉的 Opportunity Card，玩家必須選擇「進入」或「直接摸牌」。兩者都從 Main Game 提供的合法 `remainingTiles` 取得一個 `tileId`，再經共用正式取得牌 Pipeline 成為第 13 張；不增加額外牌，也不提供分數、局數、倍率、道具或其他 Reward。Phase 2 僅提供三款 Placeholder，真正玩法留待 Phase 3。
+Phase 2 在玩家準備取得正式第 13 張時顯示不可略過關閉的 Opportunity Card，玩家必須選擇「進入」或「直接摸牌」。直接摸牌會立即由 Main Game 執行普通隨機摸牌；挑戰失敗則停在不可關閉的 Result Card，直到玩家按「摸牌」才執行普通隨機摸牌；挑戰成功直接開啟不可取消的 Shared Tile Picker，讓玩家從合法 `remainingTiles` 自選一張。Picker 的「查看牌型」以 authoritative Round State 顯示唯讀縮小版 6×6 目前棋盤及 34 張普通牌 Overview，尚未 Confirm 的選擇不會提前反映在棋盤。Mini-game Contract 只回傳 `{ success }`，不決定 `tileId`；三條路徑最後都經共用正式取得牌 Pipeline 成為第 13 張，不增加額外牌，也不提供分數、局數、倍率、道具或其他 Reward。Phase 2 僅提供三款 50／50 Placeholder，Phase 3 真正玩法也只需回傳成功或失敗。
 
 ## 9. Item 池
 
@@ -183,7 +183,7 @@ Phase 1-A 已完成：
 - `TEST1129` 與固定測試劇本已完整移除；所有玩家名稱皆走正常 RNG。
 - 玩家可見的分數相關文字已統一使用「分數」或「分」。
 
-程式內部 `score`、`rawPoints` 等名稱維持原狀，避免無必要的大規模 refactor。Phase 1-C 已接入 14／16 張特殊局與正式場中事件；Phase 1-D 已接入 Item 基礎系統、嗆司Maker、口袋系列與按住查看 34 張普通牌型。Phase 1-E 已完成 Item 的局中事件權重／護盾整合，小遊戲仍屬 Phase 2。
+程式內部 `score`、`rawPoints` 等名稱維持原狀，避免無必要的大規模 refactor。Phase 1-C 已接入 14／16 張特殊局與正式場中事件；Phase 1-D 已接入 Item 基礎系統、嗆司Maker、口袋系列與查看 34 張普通牌型。Phase 1-E 已完成 Item 的局中事件權重／護盾整合；Phase 2 已完成第 13 張 Challenge、Shared Tile Picker 與共用正式取得牌流程。
 
 Phase 1-B 另建立 PRE_ROUND selection／commit transaction 與 `round.config`。舊下注 UI 已退出正常 Gameplay，新局不會帶入舊下注；既有 settlement helper 暫時保留以降低本階段重構風險。
 

@@ -70,8 +70,8 @@ Completed：
 
 - 每局只在正式第 13 張建立一次 Mini-game Opportunity。
 - 建立彈珠台、棒球九宮格、記憶力對對碰三款 Registry Definition。
-- 提供「進入」Placeholder 與「直接摸牌」兩條取得正式第 13 張的路徑。
-- 以 `remainingTiles → Mini-game → tileId` Contract 串接共用正式取得牌 Pipeline。
+- Placeholder 只回傳可測試的 `{ success }` Challenge Result；直接摸牌立即執行普通隨機摸牌，失敗則先顯示不可關閉的 Result Card，待玩家按「摸牌」才執行普通隨機摸牌。
+- 成功時使用 Shared Tile Picker 從合法 `remainingTiles` 自選牌；Picker Overview 以目前 Round State 渲染唯讀 6×6 小棋盤與 34 張普通牌，三條取得路徑最後都串接共用正式取得牌 Pipeline。
 - 小遊戲不提供分數、局數、倍率、道具或其他 Reward；真正玩法留待 Phase 3。
 
 ## Phase 3 — Real Mini-games & Avatar
@@ -80,7 +80,7 @@ Planned / 尚未實作：
 
 - 大頭貼上傳與結算大頭貼。
 - 小遊戲大頭貼 Easter Egg。
-- 三款真正小遊戲玩法逐步實作。
+- 三款真正小遊戲玩法逐步實作，僅需向 Main Game 回傳 success／failure。
 - 小遊戲輔助 Item。
 - 玩家操作取得麻將牌。
 - Playtest。
