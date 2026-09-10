@@ -216,10 +216,9 @@ assert.equal(sixteen.handLength, 16);
 assert.equal(sixteen.remainingLength, 20);
 assert.equal(api.commit("boss-boost", 3).config.finalMultiplier, 6);
 
-assert.equal(api.commit("pearl-baby").config.forcedMiniGame13, "pinball");
-assert.equal(api.commit("pearl-baby").config.excludedMiniGame8, "pinball");
-assert.equal(api.commit("home-team-wins").config.forcedMiniGame13, "nine-grid");
-assert.equal(api.commit("home-team-wins").config.excludedMiniGame8, "nine-grid");
+assert.equal(api.commit("pearl-baby").config.forcedMiniGameId, "pachinko");
+assert.equal(api.commit("home-team-wins").config.forcedMiniGameId, "baseball9");
+assert.equal("excludedMiniGame8" in api.commit("pearl-baby").config, false);
 
 const rpsTie = api.rps("rock", 0);
 assert.equal(rpsTie.presentation.outcome, "TIE");

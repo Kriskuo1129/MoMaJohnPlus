@@ -73,17 +73,16 @@ Phase 1-C 已將 Placeholder 替換為 `PRE_ROUND_EVENT_DEFINITIONS` 正式 Pool
 - 標準正式牌數：15 張。
 - 最少正式牌數：14 張。
 - 最多正式牌數：16 張。
-- 第 8 張：Phase 2 建立 Mini-game Placeholder Skeleton（Planned / 尚未實作）。
-- 第 13 張：Phase 2 建立 Mini-game Placeholder Skeleton（Planned / 尚未實作）。
+- 第 13 張：Phase 2 Mini-game Opportunity；每局最多一次。
 - 最後一張必須永遠是普通抽牌，不得是小遊戲。
 
 海底撈月改為「本局最後一張正式牌完成第一條連線」。因此 14、15、16 張局分別在第 14、15、16 張判定。
 
 ## 8. 小遊戲池
 
-未來小遊戲：彈珠台、九宮格、記憶力、野球盤、娃娃機、小賭馬、刮刮樂。
+正式 Mini-game Registry：彈珠台、棒球九宮格、記憶力對對碰。
 
-Phase 1 不要求建立小遊戲節點。第 8、13 張的 Mini-game Placeholder Skeleton 正式屬於 Phase 2，屆時應具備進入小遊戲動畫、小遊戲名稱顯示、Placeholder 流程、自動決定取得牌、獲得麻將牌動畫及返回主牌局；兩個節點原則上不能使用相同小遊戲。真正可操作的小遊戲內容留待後續階段實作。
+Phase 2 在玩家準備取得正式第 13 張時顯示不可略過關閉的 Opportunity Card，玩家必須選擇「進入」或「直接摸牌」。兩者都從 Main Game 提供的合法 `remainingTiles` 取得一個 `tileId`，再經共用正式取得牌 Pipeline 成為第 13 張；不增加額外牌，也不提供分數、局數、倍率、道具或其他 Reward。Phase 2 僅提供三款 Placeholder，真正玩法留待 Phase 3。
 
 ## 9. Item 池
 
@@ -130,10 +129,10 @@ Phase 1-D 已完成三格 inventory、Commit 後取得、滿格強制替換、�
 | 2 | 老闆加碼 | Definition 與 ×2 效果保留，目前停用且不進入正常 PRE_ROUND 抽取 |
 | 3 | 今天牌比較多 | 本局正式牌數由 15 改為 16 |
 | 4 | 槓上老闆 | 本局正式牌數由 15 改為 14，且本局分數 ×2 |
-| 5 | 珠珠寶貝 | 本局第 13 張固定為彈珠台，第 8 張不得為彈珠台 |
-| 6 | 當地球隊贏球 | 本局第 13 張固定為九宮格，第 8 張不得為九宮格 |
+| 5 | 珠珠寶貝 | 本局第 13 張 Mini-game Opportunity 指定為彈珠台，仍可直接摸牌 |
+| 6 | 當地球隊贏球 | 本局第 13 張 Mini-game Opportunity 指定為棒球九宮格，仍可直接摸牌 |
 
-Phase 1-C 已將珠珠寶貝與當地球隊贏球的第 8／13 張 Constraint 寫入 `round.config`；真正小遊戲與 Placeholder 流程於 Phase 2 接入。
+Phase 2 將上述事件簡化為 `forcedMiniGameId`，只指定第 13 張提供的遊戲，不強迫玩家參加。Restart 會重設 Opportunity lifecycle，但保留已 Commit 的指定。
 
 ## 12. 局中事件池分類
 

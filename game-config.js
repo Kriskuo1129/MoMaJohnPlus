@@ -15,6 +15,12 @@ const SCORE_CONFIG = Object.freeze({
   special: Object.freeze({ earlyWaiting: 5, lastTileFirstLine: 5 })
 });
 
+const MINIGAME_DEFINITIONS = Object.freeze({
+  pachinko: Object.freeze({ id: "pachinko", name: "彈珠台", enabled: true }),
+  baseball9: Object.freeze({ id: "baseball9", name: "棒球九宮格", enabled: true }),
+  memoryMatch: Object.freeze({ id: "memoryMatch", name: "記憶力對對碰", enabled: true })
+});
+
 const PRE_ROUND_EVENT_DEFINITIONS = Object.freeze([
   Object.freeze({ id: "mystery-gift", title: "神秘禮物到來", description: "開牌局後隨機獲得一個道具。", type: "ITEM", effectKey: "DRAW_ITEM" }),
   Object.freeze({ id: "believe-guoju", title: "相信國聚", description: "正式取得東南西北中發白全部 7 張。", type: "BET", effectKey: "REQUIRE_TILES", tileIds: ["east", "south", "west", "north", "red", "green", "white"], reward: 30, penalty: 30 }),
@@ -30,8 +36,8 @@ const PRE_ROUND_EVENT_DEFINITIONS = Object.freeze([
   Object.freeze({ id: "boss-boost", title: "老闆加碼", description: "本局特殊倍率 ×2。", type: "SPECIAL", effectKey: "SPECIAL_MULTIPLIER", multiplier: 2, enabled: false }),
   Object.freeze({ id: "more-tiles", title: "今天牌比較多", description: "本局正式牌數改為 16 張。", type: "SPECIAL", effectKey: "FORMAL_DRAW_COUNT", formalDrawCount: 16 }),
   Object.freeze({ id: "boss-leverage", title: "槓上老闆", description: "本局 14 張，特殊倍率 ×2。", type: "SPECIAL", effectKey: "DRAW_COUNT_AND_MULTIPLIER", formalDrawCount: 14, multiplier: 2 }),
-  Object.freeze({ id: "pearl-baby", title: "珠珠寶貝", description: "Commit 彈珠台第 13 張／第 8 張排除條件。", type: "SPECIAL", effectKey: "MINI_GAME_CONSTRAINT", forcedMiniGame13: "pinball", excludedMiniGame8: "pinball" }),
-  Object.freeze({ id: "home-team-wins", title: "當地球隊贏球", description: "Commit 九宮格第 13 張／第 8 張排除條件。", type: "SPECIAL", effectKey: "MINI_GAME_CONSTRAINT", forcedMiniGame13: "nine-grid", excludedMiniGame8: "nine-grid" })
+  Object.freeze({ id: "pearl-baby", title: "珠珠寶貝", description: "本局的小遊戲指定為彈珠台。", type: "SPECIAL", effectKey: "MINI_GAME_CONSTRAINT", forcedMiniGameId: "pachinko" }),
+  Object.freeze({ id: "home-team-wins", title: "當地球隊贏球", description: "本局的小遊戲指定為棒球九宮格。", type: "SPECIAL", effectKey: "MINI_GAME_CONSTRAINT", forcedMiniGameId: "baseball9" })
 ]);
 
 const ITEM_DEFINITIONS = Object.freeze([

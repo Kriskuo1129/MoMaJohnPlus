@@ -21,8 +21,8 @@ MoMaJohnPlus 是由原始 [MoMaJohn](https://github.com/Kriskuo1129/MoMaJohn) �
 
 - 建立「場」與「局」的完整遊戲結構。
 - 重新整理局中事件分類與效果。
-- 在正式牌第 8、13 張加入小遊戲節點。
-- 未來加入七款可操作小遊戲、大頭貼與相關互動。
+- Phase 2 已在每局正式第 13 張加入一次小遊戲機會，可選擇進入 Placeholder 或直接摸牌；兩條路徑都取得同一張正式牌。
+- Phase 3 將實作彈珠台、棒球九宮格、記憶力對對碰三款真正玩法；大頭貼與其他互動另行規劃。
 
 完整設計與階段規劃請參閱 [GAME_SPEC.md](GAME_SPEC.md) 及 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)。
 
@@ -50,7 +50,7 @@ python -m http.server 8000
 
 ## Legacy Gameplay baseline
 
-目前可執行版本已完成 Phase 1-A～1-E：玩家每局先從三張正式場中事件選一張並選擇槓桿，按下「開牌局」後才 Commit、扣除局數，依 committed config 進行 14／15／16 張正式摸牌。PRE_ROUND 神秘禮物權重依 Item Pool 大小（目前 10）；局中事件依目前持有籤計算 effectiveWeight，護身符在第一個 NEGATIVE handler 前消耗並攔截；Mini-game Skeleton 仍屬 Phase 2。
+目前可執行版本已完成 Phase 1-A～1-E 與 Phase 2 Mini-game Framework：玩家每局先從三張正式場中事件選一張並選擇槓桿，按下「開牌局」後才 Commit、扣除局數，依 committed config 進行 14／15／16 張正式摸牌。正式第 13 張會提供三款小遊戲之一，玩家可進入 Placeholder 或直接摸牌；小遊戲只從主牌局提供的剩餘合法牌中回傳 `tileId`，並共用正式取得牌流程。
 
 原始文件：
 

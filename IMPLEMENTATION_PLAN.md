@@ -64,15 +64,15 @@ Phase 0 不修改 Gameplay 行為。
 - Restart 保留目前 inventory，不恢復已消耗護身符，運勢在下一次抽取時重新計算。
 - 完成局中事件、Restart、BONUS、GAME OVER 與 Item 交互 Regression，並新增固定 RNG 的 `tests/phase1e.test.js`。
 
-## Phase 2 — Mini-game Integration Skeleton
+## Phase 2 — Mini-game Framework & Integration
 
-Planned / 尚未實作：
+Completed：
 
-- 建立第 8、13 張小遊戲節點。
-- 建立七款小遊戲 Registry。
-- 建立進場動畫、Placeholder、獲得牌動畫與返回牌局流程。
-- 接入「珠珠寶貝」與「當地球隊贏球」。
-- 確保第 8、13 張小遊戲不重複。
+- 每局只在正式第 13 張建立一次 Mini-game Opportunity。
+- 建立彈珠台、棒球九宮格、記憶力對對碰三款 Registry Definition。
+- 提供「進入」Placeholder 與「直接摸牌」兩條取得正式第 13 張的路徑。
+- 以 `remainingTiles → Mini-game → tileId` Contract 串接共用正式取得牌 Pipeline。
+- 小遊戲不提供分數、局數、倍率、道具或其他 Reward；真正玩法留待 Phase 3。
 
 ## Phase 3 — Real Mini-games & Avatar
 
@@ -80,7 +80,7 @@ Planned / 尚未實作：
 
 - 大頭貼上傳與結算大頭貼。
 - 小遊戲大頭貼 Easter Egg。
-- 七款真正小遊戲逐步實作。
+- 三款真正小遊戲玩法逐步實作。
 - 小遊戲輔助 Item。
 - 玩家操作取得麻將牌。
 - Playtest。

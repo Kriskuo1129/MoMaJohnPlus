@@ -1,5 +1,6 @@
 const GAME_STATES = Object.freeze({
   READY: "READY", PRE_ROUND: "PRE_ROUND", COMMITTING: "COMMITTING", DRAWING: "DRAWING",
+  MINIGAME_OFFER: "MINIGAME_OFFER", MINIGAME_ACTIVE: "MINIGAME_ACTIVE",
   EVENT_REVEAL: "EVENT_REVEAL", BONUS_PENDING: "BONUS_PENDING", BONUS_DRAW: "BONUS_DRAW",
   ROUND_END: "ROUND_END", GAME_OVER: "GAME_OVER"
 });
@@ -92,6 +93,7 @@ function createRound(formalDrawCount = RULES.baseFormalDrawCount, eventOptions =
     preRound: { eventOptions, eventSelectionType: "UNSELECTED", selectedEventId: null, selectedLeverage: 1 }, config: null, committed: false,
     completedLines: new Set(), activeWaiting: new Set(), announcedWaiting: new Set(), everWaitingLines: new Set(), achievements: new Set(),
     rawPoints: 0, roundScore: 0, roundLines: 0, roundMultiplier: 1, finalMultiplier: 1, leverageConfigured: false, betSettled: false, betResult: null, everWaited: false, waitingAnnouncements: 0, chanceMakerTriggered: false, pendingItemId: null, itemRevealConfirmed: false, rpsResult: null,
+    miniGame: { offered: false, completed: false, selectedId: null, remainingTiles: [] },
     pointsSettled: false, multiplierPoints: 0, actualMultiplierPoints: 0, betNetPoints: 0, finalRoundChange: 0, scoreBeforeSettlement: 0, eventAttemptDelta: 0, eventAddedAttempts: 0,
     bonusMissing: new Set(), bonusCandidates: [], selectedBonusTiles: [], bonusResolved: false, bonusPendingStarted: false, bonusAttemptGain: 0
   };
@@ -222,8 +224,7 @@ function specialEventConfig(event = null) {
   return {
     specialMultiplier: event?.multiplier ?? 1,
     formalDrawCount: event?.formalDrawCount ?? RULES.baseFormalDrawCount,
-    forcedMiniGame13: event?.forcedMiniGame13 ?? null,
-    excludedMiniGame8: event?.excludedMiniGame8 ?? null
+    forcedMiniGameId: event?.forcedMiniGameId ?? null
   };
 }
 
@@ -305,8 +306,7 @@ function finalizeRoundConfiguration(event, leverage, specialMultiplierOverride =
     specialMultiplier: special.specialMultiplier, finalMultiplier,
     formalDrawCount: special.formalDrawCount,
     activeBetId: event?.type === "BET" ? event.id : null,
-    forcedMiniGame13: special.forcedMiniGame13,
-    excludedMiniGame8: special.excludedMiniGame8
+    forcedMiniGameId: special.forcedMiniGameId
   });
   const order = shuffle(GAME_TILES);
   game.round.formalDrawCount = special.formalDrawCount;
@@ -558,10 +558,117 @@ function nextFormalTile() {
   return game.round.hand[game.round.drawIndex] ?? null;
 }
 
+function getAvailableMiniGames() {
+  return Object.values(MINIGAME_DEFINITIONS).filter(definition => definition.enabled);
+}
+
+function selectMiniGameForRound(random = Math.random) {
+  const forced = MINIGAME_DEFINITIONS[game.round.config?.forcedMiniGameId];
+  if (forced?.enabled) return forced;
+  const available = getAvailableMiniGames();
+  return available[Math.floor(random() * available.length)] ?? null;
+}
+
+function getRemainingFormalTiles() {
+  return [...game.round.hand.slice(game.round.drawIndex), ...game.round.remaining]
+    .filter(tile => !tile.special && !isOfficiallyDrawn(tile.id));
+}
+
+function selectRandomRemainingTile(remainingTiles, random = Math.random) {
+  return remainingTiles[Math.floor(random() * remainingTiles.length)] ?? null;
+}
+
+function placeTileAtNextFormalDraw(tileId) {
+  const index = game.round.drawIndex;
+  const selectedIndex = game.round.hand.findIndex((tile, candidateIndex) => candidateIndex >= index && tile.id === tileId);
+  if (selectedIndex >= 0) {
+    [game.round.hand[index], game.round.hand[selectedIndex]] = [game.round.hand[selectedIndex], game.round.hand[index]];
+    return game.round.hand[index];
+  }
+  const remainingIndex = game.round.remaining.findIndex(tile => tile.id === tileId);
+  if (remainingIndex < 0) return null;
+  const displaced = game.round.hand[index];
+  game.round.hand[index] = game.round.remaining[remainingIndex];
+  game.round.remaining[remainingIndex] = displaced;
+  return game.round.hand[index];
+}
+
+function shouldOfferMiniGame() {
+  return game.state === GAME_STATES.DRAWING && game.round.drawIndex === 12 && !game.round.miniGame.offered && !game.round.miniGame.completed;
+}
+
+function openMiniGameOffer() {
+  if (!shouldOfferMiniGame()) return false;
+  const definition = selectMiniGameForRound();
+  if (!definition) return false;
+  game.round.miniGame.offered = true;
+  game.round.miniGame.selectedId = definition.id;
+  game.round.miniGame.remainingTiles = getRemainingFormalTiles().map(tile => tile.id);
+  game.state = GAME_STATES.MINIGAME_OFFER;
+  openModal({
+    icon: "🎮", kicker: "小遊戲Time", title: "決定自己命運的機會！",
+    body: `<article class="minigame-offer"><h3>${definition.name}</h3></article>`,
+    actions: [
+      { label: "進入", action: startMiniGame },
+      { label: "直接摸牌", className: "secondary", action: directDrawMiniGameTile }
+    ]
+  });
+  return true;
+}
+
+function startMiniGame() {
+  if (game.state !== GAME_STATES.MINIGAME_OFFER || game.round.miniGame.completed) return false;
+  const definition = MINIGAME_DEFINITIONS[game.round.miniGame.selectedId];
+  if (!definition?.enabled) return directDrawMiniGameTile();
+  game.state = GAME_STATES.MINIGAME_ACTIVE;
+  openModal({
+    icon: "🎮", kicker: "", title: definition.name,
+    body: `<article class="minigame-placeholder"><p>小遊戲施工中！</p><span>這次先模擬取得一張牌。</span></article>`,
+    actions: [{ label: "取得牌", action: () => resolveMiniGame(runPlaceholderMiniGame(game.round.miniGame.remainingTiles)) }]
+  });
+  return true;
+}
+
+function runPlaceholderMiniGame(remainingTileIds, random = Math.random) {
+  const snapshot = [...remainingTileIds];
+  return { tileId: snapshot[Math.floor(random() * snapshot.length)] ?? null };
+}
+
+function directDrawMiniGameTile() {
+  if (game.state !== GAME_STATES.MINIGAME_OFFER || game.round.miniGame.completed) return false;
+  return resolveMiniGame({ tileId: selectRandomRemainingTile(getRemainingFormalTiles())?.id ?? null });
+}
+
+async function resolveMiniGame(result) {
+  if (![GAME_STATES.MINIGAME_OFFER, GAME_STATES.MINIGAME_ACTIVE].includes(game.state) || game.round.miniGame.completed) return false;
+  const legalTiles = getRemainingFormalTiles();
+  const requested = legalTiles.find(tile => tile.id === result?.tileId);
+  const selected = requested ?? selectRandomRemainingTile(legalTiles);
+  if (!selected || !placeTileAtNextFormalDraw(selected.id)) return false;
+  game.round.miniGame.completed = true;
+  game.round.miniGame.remainingTiles = [];
+  game.state = GAME_STATES.DRAWING;
+  closeModal();
+  await acquireFormalTile(selected);
+  return selected.id;
+}
+
+function clearMiniGameLifecycle() {
+  if (!game.round?.miniGame) return;
+  game.round.miniGame.remainingTiles = [];
+  if ([GAME_STATES.MINIGAME_OFFER, GAME_STATES.MINIGAME_ACTIVE].includes(game.state)) game.round.miniGame.completed = true;
+}
+
 async function drawTile() {
   if (game.state !== GAME_STATES.DRAWING || !game.round?.committed || game.busy || game.uiOverlayOpen) return;
+  if (shouldOfferMiniGame()) return openMiniGameOffer();
   const tile = nextFormalTile();
   if (!tile || elements.drawStack.disabled) return;
+  return acquireFormalTile(tile);
+}
+
+async function acquireFormalTile(tile) {
+  if (game.state !== GAME_STATES.DRAWING || !tile || game.busy) return false;
   game.busy = true;
   game.round.drawn.add(tile.id);
   await animateStackTile(tile);
@@ -577,6 +684,7 @@ async function drawTile() {
   elements.message.textContent = "";
   if (tile.special) return openEventChoice(tile);
   continueAfterDraw();
+  return true;
 }
 
 function animateStackTile(tile) {
@@ -1107,6 +1215,7 @@ function settleRoundPoints() {
 
 function endRound(hadBonus, bonusSuccess, forceGameOver = false) {
   hideTileOverview();
+  clearMiniGameLifecycle();
   game.state = GAME_STATES.ROUND_END;
   const totalBefore = game.score;
   settleRoundPoints();
@@ -1141,6 +1250,7 @@ function animateRoundTotal(from, to) {
 
 function showGameOver() {
   hideTileOverview();
+  clearMiniGameLifecycle();
   game.state = GAME_STATES.GAME_OVER;
   game.busy = false;
   recordRoundHighs();
@@ -1417,6 +1527,7 @@ function startGame() {
 
 function showStartScreen() {
   hideTileOverview();
+  clearMiniGameLifecycle();
   closeModal();
   closeBonusModal();
   elements.gameShell.classList.add("hidden");
