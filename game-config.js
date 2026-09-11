@@ -18,8 +18,31 @@ const SCORE_CONFIG = Object.freeze({
 const MINIGAME_DEFINITIONS = Object.freeze({
   pachinko: Object.freeze({ id: "pachinko", name: "彈珠台", enabled: true }),
   baseball9: Object.freeze({ id: "baseball9", name: "棒球九宮格", enabled: true }),
-  memoryMatch: Object.freeze({ id: "memoryMatch", name: "記憶力對對碰", enabled: true })
+  memoryMaster: Object.freeze({ id: "memoryMaster", name: "記憶大師", enabled: true, implementation: "MEMORY_MASTER" })
 });
+
+const MEMORY_MASTER_THEMES = Object.freeze([
+  Object.freeze({ id: "fruit", name: Object.freeze({ zh: "水果", en: "Fruits" }), items: Object.freeze([
+    ["apple", "🍎", "蘋果", "Apple"], ["banana", "🍌", "香蕉", "Banana"], ["grape", "🍇", "葡萄", "Grape"], ["watermelon", "🍉", "西瓜", "Watermelon"],
+    ["strawberry", "🍓", "草莓", "Strawberry"], ["pineapple", "🍍", "鳳梨", "Pineapple"], ["orange", "🍊", "橘子", "Orange"], ["lemon", "🍋", "檸檬", "Lemon"],
+    ["cherry", "🍒", "櫻桃", "Cherry"], ["peach", "🍑", "桃子", "Peach"], ["kiwi", "🥝", "奇異果", "Kiwi"], ["mango", "🥭", "芒果", "Mango"]
+  ].map(([id, emoji, zh, en]) => Object.freeze({ id, emoji, name: Object.freeze({ zh, en }) }))) }),
+  Object.freeze({ id: "animal", name: Object.freeze({ zh: "動物", en: "Animals" }), items: Object.freeze([
+    ["lion", "🦁", "獅子", "Lion"], ["elephant", "🐘", "大象", "Elephant"], ["shark", "🦈", "鯊魚", "Shark"], ["dinosaur", "🦖", "恐龍", "Dinosaur"],
+    ["monkey", "🐒", "猴子", "Monkey"], ["panda", "🐼", "熊貓", "Panda"], ["rabbit", "🐰", "兔子", "Rabbit"], ["tiger", "🐯", "老虎", "Tiger"],
+    ["penguin", "🐧", "企鵝", "Penguin"], ["frog", "🐸", "青蛙", "Frog"], ["fox", "🦊", "狐狸", "Fox"], ["giraffe", "🦒", "長頸鹿", "Giraffe"]
+  ].map(([id, emoji, zh, en]) => Object.freeze({ id, emoji, name: Object.freeze({ zh, en }) }))) }),
+  Object.freeze({ id: "food", name: Object.freeze({ zh: "食物", en: "Foods" }), items: Object.freeze([
+    ["hamburger", "🍔", "漢堡", "Hamburger"], ["pizza", "🍕", "披薩", "Pizza"], ["fries", "🍟", "薯條", "Fries"], ["donut", "🍩", "甜甜圈", "Donut"],
+    ["iceCream", "🍦", "冰淇淋", "Ice Cream"], ["cake", "🍰", "蛋糕", "Cake"], ["hotDog", "🌭", "熱狗", "Hot Dog"], ["sushi", "🍣", "壽司", "Sushi"],
+    ["chicken", "🍗", "雞腿", "Chicken"], ["popcorn", "🍿", "爆米花", "Popcorn"], ["ramen", "🍜", "拉麵", "Ramen"], ["riceBall", "🍙", "飯糰", "Rice Ball"]
+  ].map(([id, emoji, zh, en]) => Object.freeze({ id, emoji, name: Object.freeze({ zh, en }) }))) }),
+  Object.freeze({ id: "sport", name: Object.freeze({ zh: "運動", en: "Sports" }), items: Object.freeze([
+    ["baseball", "⚾", "棒球", "Baseball"], ["basketball", "🏀", "籃球", "Basketball"], ["soccer", "⚽", "足球", "Soccer"], ["tennis", "🎾", "網球", "Tennis"],
+    ["badminton", "🏸", "羽球", "Badminton"], ["volleyball", "🏐", "排球", "Volleyball"], ["tableTennis", "🏓", "桌球", "Table Tennis"], ["bowling", "🎳", "保齡球", "Bowling"],
+    ["golf", "⛳", "高爾夫", "Golf"], ["boxing", "🥊", "拳擊", "Boxing"], ["swimming", "🏊", "游泳", "Swimming"], ["archery", "🏹", "射箭", "Archery"]
+  ].map(([id, emoji, zh, en]) => Object.freeze({ id, emoji, name: Object.freeze({ zh, en }) }))) })
+]);
 
 const PRE_ROUND_EVENT_DEFINITIONS = Object.freeze([
   Object.freeze({ id: "mystery-gift", title: "神秘禮物到來", description: "開牌局後隨機獲得一個道具。", type: "ITEM", effectKey: "DRAW_ITEM" }),

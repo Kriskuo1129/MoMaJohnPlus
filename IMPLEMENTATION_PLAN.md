@@ -69,18 +69,32 @@ Phase 0 不修改 Gameplay 行為。
 Completed：
 
 - 每局只在正式第 13 張建立一次 Mini-game Opportunity。
-- 建立彈珠台、棒球九宮格、記憶力對對碰三款 Registry Definition。
+- 建立彈珠台、棒球九宮格、記憶大師三款 Registry Definition。
 - Placeholder 只回傳可測試的 `{ success }` Challenge Result；直接摸牌立即執行普通隨機摸牌，失敗則先顯示不可關閉的 Result Card，待玩家按「摸牌」才執行普通隨機摸牌。
 - 成功時使用 Shared Tile Picker 從合法 `remainingTiles` 自選牌；Picker Overview 以目前 Round State 渲染唯讀 6×6 小棋盤與 34 張普通牌，三條取得路徑最後都串接共用正式取得牌 Pipeline。
 - 小遊戲不提供分數、局數、倍率、道具或其他 Reward；真正玩法留待 Phase 3。
 
 ## Phase 3 — Real Mini-games & Avatar
 
+Phase 3-A Completed：
+
+- 正式完成「記憶大師」：4 個等權主題、中文／English 50／50、每類 12 抽 4、4 張牌及 5 秒記憶倒數。
+- 題目採 Instruction、大型 Emoji 與在地化名稱；猜錯先揭所選牌，1 秒後才揭正解，再依既有 Contract 回傳 FAILURE。
+- 玩家蓋牌後只猜一次；正確／錯誤只回傳 `{ success }`，由 Phase 2 Main Game Contract 接續 Shared Tile Picker 或 Failure Result Card。
+- 集中可注入 RNG、一次判定鎖及可清除 countdown/result timers；彈珠台與棒球九宮格仍保持 Placeholder。
+
+Settlement & Achievement Update Completed：
+
+- 建立 Round Score Breakdown，在正式得失分入口紀錄、同來源合併，並區分倍率項目與不吃倍率的 BET。
+- Round Result 改為固定最終變化、可捲動分數明細、固定目前總分與操作列；總分 floor 0 顯示實際變化。
+- 建立正式完成局快照、15 個 Achievement Definitions 與獨立 evaluator；GAME OVER 改為最終分數與可捲動稱號列表。
+- Restart 不寫入未完成局快照；新遊戲完整 reset Breakdown、完成局統計與當場稱號。
+
 Planned / 尚未實作：
 
 - 大頭貼上傳與結算大頭貼。
 - 小遊戲大頭貼 Easter Egg。
-- 三款真正小遊戲玩法逐步實作，僅需向 Main Game 回傳 success／failure。
+- 彈珠台與棒球九宮格真正玩法，僅需向 Main Game 回傳 success／failure。
 - 小遊戲輔助 Item。
 - 玩家操作取得麻將牌。
 - Playtest。

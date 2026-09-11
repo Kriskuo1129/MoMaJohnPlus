@@ -10,6 +10,7 @@ MoMaJohnPlus 是由原始 [MoMaJohn](https://github.com/Kriskuo1129/MoMaJohn) �
 - Phase 1-C 已完成 9 個場中下注、6 個場中特殊、正式隨機三選一 Pool、14／15／16 張動態牌數及 committed round config。
 - Phase 1-D 已完成 10 個 Item、三格 Item inventory、取得／強制替換流程、嗆司Maker、口袋系列主動使用，以及按住查看牌型。
 - Phase 1-E 已完成 PRE_ROUND 加權抽取、四種籤運勢與免洗護身符負面事件攔截（包含瓦斯桶爆炸、停電）。
+- Settlement & Achievement Update 已完成結構化單局分數明細、實際最終變化，以及依整場正式完成局判定的 15 個當場稱號。
 - PRE_ROUND 每局皆可主動選擇「這局不選事件」，放棄事件後仍可使用 ×1／×2／×3 槓桿。
 - 摸牌、連線、聽牌、局中事件、補牌及結算仍延續原始 Gameplay baseline；舊 Checkbox 下注 Gameplay 已正式退休。
 - Plus 新功能將依開發計畫分階段導入。
@@ -22,7 +23,7 @@ MoMaJohnPlus 是由原始 [MoMaJohn](https://github.com/Kriskuo1129/MoMaJohn) �
 - 建立「場」與「局」的完整遊戲結構。
 - 重新整理局中事件分類與效果。
 - Phase 2 已在每局正式第 13 張加入一次小遊戲機會；直接摸牌會立即普通隨機摸牌，挑戰失敗需在 Result Card 按「摸牌」，挑戰成功則可從合法剩餘牌自選一張。選牌時可查看唯讀縮小棋盤與 34 張已抽牌型。
-- Phase 3 將實作彈珠台、棒球九宮格、記憶力對對碰三款真正玩法；大頭貼與其他互動另行規劃。
+- Phase 3-A 已完成「記憶大師」正式玩法：隨機主題與語言、12 抽 4、4 張牌、5 秒記憶、大圖示題目及一次猜牌；猜錯會先揭所選牌，1 秒後才揭正解。彈珠台、棒球九宮格與其他互動仍待後續階段。
 
 完整設計與階段規劃請參閱 [GAME_SPEC.md](GAME_SPEC.md) 及 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)。
 

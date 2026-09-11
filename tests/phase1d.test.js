@@ -189,7 +189,7 @@ globalThis.phase1DTest = {
     const used = completePocketItemUse(0, sourceTileId);
     Math.random = originalRandom;
     const order = [...game.round.hand, ...game.round.remaining].map(tile => tile.id);
-    return { used, beforeIndex, afterIndex: game.round.drawIndex, items: [...game.items], drawn: [...game.round.drawn], order, board: game.round.board.map(tile => tile.id), target: item.targetTileId };
+    return { used, beforeIndex, afterIndex: game.round.drawIndex, items: [...game.items], drawn: [...game.round.drawn], order, board: game.round.board.map(tile => tile.id), target: item.targetTileId, activeItemUses: game.round.activeItemUses };
   },
   pocketSelection(itemId, drawnIds, selectedId = null) {
     game = freshGameState("TEST");
@@ -208,7 +208,7 @@ globalThis.phase1DTest = {
     const modal = { body: elements.modalBody.innerHTML, title: elements.modalTitle.textContent, icon: elements.modalIcon.textContent };
     const before = { items: [...game.items], drawn: [...game.round.drawn], order: [...game.round.hand, ...game.round.remaining].map(tile => tile.id) };
     if (selectedId) completePocketItemUse(0, selectedId); else cancelTilePicker();
-    return { candidates, opened, modal, before, after: { items: [...game.items], drawn: [...game.round.drawn], order: [...game.round.hand, ...game.round.remaining].map(tile => tile.id) }, target: item.targetTileId };
+    return { candidates, opened, modal, before, after: { items: [...game.items], drawn: [...game.round.drawn], order: [...game.round.hand, ...game.round.remaining].map(tile => tile.id), activeItemUses: game.round.activeItemUses }, target: item.targetTileId };
   },
   pocketWithoutCandidate() {
     game = freshGameState("TEST");
@@ -343,6 +343,7 @@ for (const [itemId, target] of [["pocket-green", "green"], ["pocket-red", "red"]
   assert.equal(new Set(result.order).size, 36);
   assert.equal(new Set(result.board).size, 36);
   assert.equal(result.order.slice(result.afterIndex).includes(target), false);
+  assert.equal(result.activeItemUses, 1);
 }
 assert.equal(api.pocket("pocket-green", "wan-1", true).used, false);
 assert.equal(api.pocket("pocket-green", "event-1").used, false);
@@ -365,7 +366,8 @@ assert.equal(selectedPocket.after.order.slice(15).includes(selectedPocket.target
 
 const cancelledPocket = api.pocketSelection("pocket-white", ["wan-1", "wan-5"]);
 assert.equal(cancelledPocket.opened, true);
-assert.equal(JSON.stringify(cancelledPocket.after), JSON.stringify(cancelledPocket.before));
+assert.equal(cancelledPocket.after.activeItemUses, 0);
+assert.equal(JSON.stringify({ items: cancelledPocket.after.items, drawn: cancelledPocket.after.drawn, order: cancelledPocket.after.order }), JSON.stringify(cancelledPocket.before));
 
 const emptyPocket = api.pocketWithoutCandidate();
 assert.equal(emptyPocket.opened, false);

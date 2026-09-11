@@ -6,6 +6,10 @@ const GAME_STATES = Object.freeze({
 });
 
 const RULES = Object.freeze({ initialAttempts: 6, maxAttempts: 6, bonusChoices: 3, baseFormalDrawCount: 15 });
+const MEMORY_MASTER_REVEAL_SECONDS = 5;
+const MEMORY_MASTER_CARD_COUNT = 4;
+const MEMORY_MASTER_WRONG_REVEAL_DELAY_MS = 1000;
+const MEMORY_MASTER_RESULT_DELAY_MS = 800;
 const PLAYER_NAME_STORAGE_KEY = "momajohnPlayerName";
 const NUMERALS = "一二三四五六七八九";
 const SUIT_NAMES = Object.freeze({ wan: "萬子", tong: "筒子", suo: "條子" });
@@ -66,7 +70,8 @@ function freshGameState(playerName = "") {
       extraRoundsFromEvents: 0, eventScoreGain: 0, eventScoreLoss: 0, eventEarlyEndCount: 0, gameOverByEvent: false,
       betsPlaced: 0, betsWon: 0, betsLost: 0, betScoreGain: 0, betScoreLoss: 0, betStats,
       earlyWaitingCount: 0, lastTileFirstLineCount: 0,
-      highestRoundRawPoints: 0, highestRoundSettledPoints: 0, highestMultiplier: 1, highestRoundLines: 0, totalAchievements: 0
+      highestRoundRawPoints: 0, highestRoundSettledPoints: 0, highestMultiplier: 1, highestRoundLines: 0, totalAchievements: 0,
+      completedRoundStats: [], activeItemUses: 0, earnedAchievements: []
     }
   };
 }
@@ -93,8 +98,8 @@ function createRound(formalDrawCount = RULES.baseFormalDrawCount, eventOptions =
     preRound: { eventOptions, eventSelectionType: "UNSELECTED", selectedEventId: null, selectedLeverage: 1 }, config: null, committed: false,
     completedLines: new Set(), activeWaiting: new Set(), announcedWaiting: new Set(), everWaitingLines: new Set(), achievements: new Set(),
     rawPoints: 0, roundScore: 0, roundLines: 0, roundMultiplier: 1, finalMultiplier: 1, leverageConfigured: false, betSettled: false, betResult: null, everWaited: false, waitingAnnouncements: 0, chanceMakerTriggered: false, pendingItemId: null, itemRevealConfirmed: false, rpsResult: null,
-    miniGame: { offered: false, completed: false, selectedId: null, challengeResult: null, challengeResolved: false, failureDrawStarted: false }, tilePicker: null,
-    pointsSettled: false, multiplierPoints: 0, actualMultiplierPoints: 0, betNetPoints: 0, finalRoundChange: 0, scoreBeforeSettlement: 0, eventAttemptDelta: 0, eventAddedAttempts: 0,
+    miniGame: { offered: false, completed: false, selectedId: null, challengeResult: null, challengeResolved: false, failureDrawStarted: false, memory: null }, tilePicker: null,
+    pointsSettled: false, multiplierPoints: 0, actualMultiplierPoints: 0, betNetPoints: 0, finalRoundChange: 0, scoreBeforeSettlement: 0, scoreBreakdown: [], activeItemUses: 0, completedStatsRecorded: false, eventAttemptDelta: 0, eventAddedAttempts: 0,
     bonusMissing: new Set(), bonusCandidates: [], selectedBonusTiles: [], bonusResolved: false, bonusPendingStarted: false, bonusAttemptGain: 0
   };
 }
@@ -469,6 +474,7 @@ function completePocketItemUse(index, sourceTileId) {
   game.round.drawn.delete(sourceTileId);
   game.round.drawn.add(targetTileId);
   game.items.splice(index, 1);
+  game.round.activeItemUses += 1;
   closeTilePicker();
   renderBoard();
   scoreLines();
@@ -715,12 +721,130 @@ function startMiniGame() {
   const definition = MINIGAME_DEFINITIONS[game.round.miniGame.selectedId];
   if (!definition?.enabled) return directDrawMiniGameTile();
   game.state = GAME_STATES.MINIGAME_ACTIVE;
+  if (definition.implementation === "MEMORY_MASTER") return startMemoryMaster();
   openModal({
     icon: "🎮", kicker: "", title: definition.name,
     body: `<article class="minigame-placeholder"><p>小遊戲施工中！</p><span>這次先模擬挑戰結果。</span></article>`,
     actions: [{ label: "開始模擬挑戰", action: () => resolveMiniGameChallenge(runMiniGamePlaceholder()) }]
   });
   return true;
+}
+
+function shuffleWithRandom(items, random) {
+  const copy = [...items];
+  for (let index = copy.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(random() * (index + 1));
+    [copy[index], copy[swapIndex]] = [copy[swapIndex], copy[index]];
+  }
+  return copy;
+}
+
+function createMemoryMasterRound(random = Math.random) {
+  const theme = MEMORY_MASTER_THEMES[Math.floor(random() * MEMORY_MASTER_THEMES.length)] ?? MEMORY_MASTER_THEMES[0];
+  const language = random() < 0.5 ? "zh" : "en";
+  const samplePool = [...theme.items];
+  const sampled = [];
+  while (sampled.length < MEMORY_MASTER_CARD_COUNT && samplePool.length) sampled.push(samplePool.splice(Math.floor(random() * samplePool.length), 1)[0]);
+  const items = shuffleWithRandom(sampled, random);
+  const target = items[Math.floor(random() * items.length)] ?? items[0];
+  return { themeId: theme.id, themeName: theme.name[language], language, items, targetItemId: target.id, phase: "REVEAL", selectedIndex: null, resolved: false, correctAnswerRevealed: false, countdown: MEMORY_MASTER_REVEAL_SECONDS, countdownTimer: null, correctRevealTimer: null, resultTimer: null };
+}
+
+function startMemoryMaster(random = Math.random) {
+  if (game.state !== GAME_STATES.MINIGAME_ACTIVE || game.round.miniGame.memory) return false;
+  const memory = createMemoryMasterRound(random);
+  game.round.miniGame.memory = memory;
+  renderMemoryMaster();
+  requestAnimationFrame(() => startMemoryMasterCountdown(memory));
+  return true;
+}
+
+function memoryMasterItemLabel(memory, item) {
+  return item.name[memory.language];
+}
+
+function renderMemoryMaster() {
+  const memory = game.round?.miniGame.memory;
+  if (!memory) return false;
+  const target = memory.items.find(item => item.id === memory.targetItemId);
+  const isReveal = memory.phase === "REVEAL";
+  const isQuestion = memory.phase === "QUESTION";
+  const theme = memory.language === "zh" ? `本次主題：${memory.themeName}` : `Theme: ${memory.themeName}`;
+  const revealPrompt = memory.language === "zh" ? `記住它們的位置！ ${memory.countdown}` : `Remember their positions! ${memory.countdown}`;
+  const questionPrompt = memory.language === "zh" ? "請翻出這張牌在哪" : "Find this card";
+  const prompt = isReveal
+    ? `<p class="memory-master-prompt">${revealPrompt}</p>`
+    : `<div class="memory-question"><p class="memory-question-prompt">${questionPrompt}</p><div class="memory-question-emoji">${target.emoji}</div><div class="memory-question-name">${memoryMasterItemLabel(memory, target)}</div></div>`;
+  const cards = memory.items.map((item, index) => {
+    const selected = memory.selectedIndex === index;
+    const isTarget = item.id === memory.targetItemId;
+    const showTarget = memory.phase === "RESOLVING" && isTarget && (selected || memory.correctAnswerRevealed);
+    const showFace = isReveal || (memory.phase === "RESOLVING" && selected) || showTarget;
+    const resultClass = memory.phase === "RESOLVING" ? selected ? (isTarget ? " correct" : " wrong") : showTarget ? " target" : "" : "";
+    const content = showFace ? `<span>${item.emoji}</span><b>${memoryMasterItemLabel(memory, item)}</b>` : "<span class=\"memory-card-back\">？</span>";
+    const label = showFace ? memoryMasterItemLabel(memory, item) : `${memory.language === "zh" ? "蓋牌" : "Covered card"} ${index + 1}`;
+    return `<button type="button" class="memory-master-card${showFace ? " face-up" : " covered"}${resultClass}" data-memory-index="${index}" aria-label="${label}"${isQuestion ? "" : " disabled"}>${content}</button>`;
+  }).join("");
+  openModal({ icon: "🧠", kicker: theme, title: "記憶大師", body: `<section class="memory-master">${prompt}<div class="memory-master-grid">${cards}</div></section>`, actions: [] });
+  elements.modalBody.querySelectorAll("[data-memory-index]").forEach(button => button.addEventListener("click", () => submitMemoryMasterGuess(Number(button.dataset.memoryIndex)), { once: true }));
+  return true;
+}
+
+function startMemoryMasterCountdown(memory) {
+  if (game.round?.miniGame.memory !== memory || memory.phase !== "REVEAL" || memory.countdownTimer) return false;
+  memory.countdownTimer = setInterval(() => {
+    if (game.round?.miniGame.memory !== memory || memory.phase !== "REVEAL") return clearMemoryMasterTimer(memory, "countdownTimer", clearInterval);
+    memory.countdown -= 1;
+    if (memory.countdown <= 0) {
+      clearMemoryMasterTimer(memory, "countdownTimer", clearInterval);
+      memory.phase = "QUESTION";
+    }
+    renderMemoryMaster();
+  }, 1000);
+  return true;
+}
+
+function clearMemoryMasterTimer(memory, key, clearTimer) {
+  if (memory?.[key] !== null) clearTimer(memory[key]);
+  if (memory) memory[key] = null;
+}
+
+function submitMemoryMasterGuess(index) {
+  const memory = game.round?.miniGame.memory;
+  if (!memory || memory.phase !== "QUESTION" || memory.resolved || !memory.items[index]) return false;
+  memory.phase = "RESOLVING";
+  memory.selectedIndex = index;
+  memory.resolved = true;
+  const success = memory.items[index].id === memory.targetItemId;
+  renderMemoryMaster();
+  if (success) {
+    memory.resultTimer = setTimeout(() => finishMemoryMaster(true, memory), MEMORY_MASTER_RESULT_DELAY_MS);
+  } else {
+    memory.correctRevealTimer = setTimeout(() => {
+      if (game.round?.miniGame.memory !== memory || memory.phase !== "RESOLVING") return;
+      memory.correctRevealTimer = null;
+      memory.correctAnswerRevealed = true;
+      renderMemoryMaster();
+      memory.resultTimer = setTimeout(() => finishMemoryMaster(false, memory), MEMORY_MASTER_RESULT_DELAY_MS);
+    }, MEMORY_MASTER_WRONG_REVEAL_DELAY_MS);
+  }
+  return success;
+}
+
+function finishMemoryMaster(success, memory) {
+  if (game.round?.miniGame.memory !== memory || memory.phase !== "RESOLVING") return false;
+  memory.phase = "COMPLETE";
+  clearMemoryMasterState();
+  return resolveMiniGameChallenge({ success });
+}
+
+function clearMemoryMasterState() {
+  const memory = game.round?.miniGame.memory;
+  if (!memory) return;
+  clearMemoryMasterTimer(memory, "countdownTimer", clearInterval);
+  clearMemoryMasterTimer(memory, "correctRevealTimer", clearTimeout);
+  clearMemoryMasterTimer(memory, "resultTimer", clearTimeout);
+  game.round.miniGame.memory = null;
 }
 
 function runMiniGamePlaceholder(random = Math.random) {
@@ -812,6 +936,7 @@ async function completeMiniGameFormalDraw(selected) {
 
 function clearMiniGameLifecycle() {
   if (!game.round?.miniGame) return;
+  clearMemoryMasterState();
   game.round.tilePicker = null;
   if ([GAME_STATES.MINIGAME_OFFER, GAME_STATES.MINIGAME_ACTIVE, GAME_STATES.MINIGAME_REWARD].includes(game.state)) game.round.miniGame.completed = true;
 }
@@ -884,7 +1009,7 @@ function scoreLines() {
     game.round.roundLines += 1;
     game.totalLines += 1;
     game.stats.totalLines += 1;
-    addRoundPoints(points);
+    addRoundPoints(points, { key: "line", label: "連線" });
     const label = ordinal === 1 ? "連線成功！" : ordinal === 2 ? "雙線！" : "三線以上！";
     notifyScore(`${label} +${points} 分`);
     flashLine(line, "line-flash");
@@ -913,14 +1038,27 @@ function awardOnce(id, points, label, suitTotalBase = null) {
   game.stats.totalAchievements += 1;
   const statKey = ({ "wan-5": "wan5Count", "wan-7": "wan7Count", "wan-9": "wan9Count", "tong-5": "tong5Count", "tong-7": "tong7Count", "tong-9": "tong9Count", "suo-5": "tiao5Count", "suo-7": "tiao7Count", "suo-9": "tiao9Count", winds: "fourWindsCount", dragons: "threeDragonsCount", "early-waiting": "earlyWaitingCount", "last-tile-first-line": "lastTileFirstLineCount" })[id];
   if (statKey) game.stats[statKey] += 1;
-  addRoundPoints(points);
+  const breakdownLabel = ({ "wan-5": "萬子 5 張", "wan-7": "萬子 7 張", "wan-9": "萬子 9 張", "tong-5": "筒子 5 張", "tong-7": "筒子 7 張", "tong-9": "筒子 9 張", "suo-5": "條子 5 張", "suo-7": "條子 7 張", "suo-9": "條子 9 張", winds: "四風", dragons: "三元牌", "early-waiting": "天聽", "last-tile-first-line": "海底撈月" })[id] ?? label.replace(/[！!]/g, "");
+  addRoundPoints(points, { key: `achievement:${id}`, label: breakdownLabel });
   const message = `${label} +${points} 分`;
   notifyScore(message, { type: "achievement", duration: 2500 });
 }
 
-function addRoundPoints(points) {
+function addRoundScoreBreakdown({ key, label, points, affectedByMultiplier = true }) {
+  if (!game.round || !points) return;
+  const existing = game.round.scoreBreakdown.find(item => item.key === key && item.affectedByMultiplier === affectedByMultiplier);
+  if (existing) {
+    existing.count += 1;
+    existing.points += points;
+    return;
+  }
+  game.round.scoreBreakdown.push({ key, label, count: 1, points, affectedByMultiplier });
+}
+
+function addRoundPoints(points, source = null) {
   game.round.rawPoints += points;
   game.round.roundScore = game.round.rawPoints;
+  if (source) addRoundScoreBreakdown({ ...source, points, affectedByMultiplier: true });
   updateHUD();
 }
 
@@ -962,7 +1100,7 @@ function updateWaitingLines() {
     notifyScore(label, true);
     if (hasItem("chance-maker") && !game.round.chanceMakerTriggered) {
       game.round.chanceMakerTriggered = true;
-      addRoundPoints(5);
+      addRoundPoints(5, { key: "chance-maker", label: "嗆司Maker" });
       notifyScore("嗆司Maker！第一次聽牌 +5 分", { type: "achievement", duration: 2200 });
     }
   }
@@ -1181,7 +1319,7 @@ function revealSpecialEvent() {
 
 const EVENT_EFFECT_HANDLERS = {
   ADD_SCORE(event) {
-    addRoundPoints(event.value);
+    addRoundPoints(event.value, { key: `event:${event.id}`, label: event.title });
     if (event.value >= 0) game.stats.eventScoreGain += event.value;
     else game.stats.eventScoreLoss += Math.abs(event.value);
     return { effectLabel: `${event.value >= 0 ? "+" : ""}${event.value} 分` };
@@ -1191,7 +1329,7 @@ const EVENT_EFFECT_HANDLERS = {
     const value = event.randomMode === "PICK"
       ? event.value[Math.floor(Math.random() * event.value.length)]
       : Math.floor(Math.random() * (event.value[1] - event.value[0] + 1)) + event.value[0];
-    addRoundPoints(value);
+    addRoundPoints(value, { key: `event:${event.id}`, label: event.title });
     if (value >= 0) game.stats.eventScoreGain += value;
     else game.stats.eventScoreLoss += Math.abs(value);
     return { effectLabel: `${value >= 0 ? "+" : ""}${value} 分` };
@@ -1209,12 +1347,13 @@ const EVENT_EFFECT_HANDLERS = {
     game.round.eventAttemptDelta -= removable;
     return { effectLabel: `-${removable} 次` };
   },
-  HALVE_ROUND_SCORE() {
+  HALVE_ROUND_SCORE(event) {
     const before = game.round.rawPoints;
     const after = Math.trunc(before / 2);
     const delta = after - before;
     game.round.rawPoints = after;
     game.round.roundScore = after;
+    addRoundScoreBreakdown({ key: `event:${event.id}`, label: event.title, points: delta, affectedByMultiplier: true });
     if (delta < 0) game.stats.eventScoreLoss += Math.abs(delta); else game.stats.eventScoreGain += delta;
     return { effectLabel: `本局目前分數減半（${formatSignedScore(delta * game.round.finalMultiplier)} 分）` };
   },
@@ -1297,6 +1436,7 @@ function finishSpecialEvent() {
 function restartCurrentRound() {
   hideTileOverview();
   const previous = game.round;
+  clearMiniGameLifecycle();
   rollbackRoundOutcomeStats(previous);
   const replacement = createRound(previous.config.formalDrawCount, previous.preRound.eventOptions);
   replacement.preRound = previous.preRound;
@@ -1351,6 +1491,7 @@ function settleBets() {
   const won = betConditionMet(bet);
   const requested = won ? bet.reward : -betPenalty(bet);
   addTotalPoints(requested);
+  addRoundScoreBreakdown({ key: `bet:${bet.id}:${won ? "won" : "lost"}`, label: won ? "下注成功" : "下注失敗", points: requested, affectedByMultiplier: false });
   const stat = game.stats.betStats[bet.id];
   game.stats.betsPlaced += 1;
   game.stats[won ? "betsWon" : "betsLost"] += 1;
@@ -1370,6 +1511,26 @@ function settleRoundPoints() {
   return game.round.actualMultiplierPoints;
 }
 
+function recordCompletedRoundStats() {
+  if (!game.round || game.round.completedStatsRecorded) return false;
+  const tileIds = CORE_TILES.filter(tile => isOfficiallyDrawn(tile.id)).map(tile => tile.id);
+  game.round.completedStatsRecorded = true;
+  game.stats.completedRoundStats.push({ tileIds, everWaited: game.round.everWaited, activeItemUses: game.round.activeItemUses });
+  game.stats.activeItemUses += game.round.activeItemUses;
+  return true;
+}
+
+function renderScoreBreakdown() {
+  const multiplier = game.round.finalMultiplier;
+  if (!game.round.scoreBreakdown.length) return '<p class="score-breakdown-empty">本局沒有分數變化</p>';
+  return game.round.scoreBreakdown.map(item => {
+    const shownPoints = item.points;
+    const count = item.key === "line" || item.count > 1 ? ` ×${item.count}` : "";
+    const multiplierBadge = item.affectedByMultiplier && multiplier > 1 ? `<small>×${multiplier}</small>` : "";
+    return `<div class="score-breakdown-row"><span>${escapeHtml(item.label)}${count}</span><strong class="${getRoundPointColorClass(shownPoints)}">${formatSignedScore(shownPoints)}</strong>${multiplierBadge}</div>`;
+  }).join("");
+}
+
 function endRound(hadBonus, bonusSuccess, forceGameOver = false) {
   hideTileOverview();
   clearMiniGameLifecycle();
@@ -1379,14 +1540,13 @@ function endRound(hadBonus, bonusSuccess, forceGameOver = false) {
   const betResults = settleBets();
   game.round.betNetPoints = betResults.reduce((sum, result) => sum + result.points, 0);
   game.round.finalRoundChange = game.score - totalBefore;
+  recordCompletedRoundStats();
   recordRoundHighs();
   updateHUD();
-  const bonusText = hadBonus ? `<p><strong>${bonusSuccess ? (game.round.bonusAttemptGain ? "補牌成功！+1 次" : "補牌成功！次數已達上限") : "補牌未中"}</strong></p>` : "";
-  const betText = betResults.length ? `<section class="result-bets${game.round.betNetPoints < 0 ? " negative" : ""}"><small>下注損益</small><strong>${formatSignedScore(game.round.betNetPoints)} 分</strong></section>` : "";
   const gameEnded = forceGameOver || attemptsRemaining() === 0;
   openModal({
     icon: bonusSuccess ? "＋1" : "結", kicker: `ROUND RESULT・第 ${game.roundsPlayed} 局`, title: "單局結算",
-    body: `<div class="round-result"><section class="result-round-points${game.round.multiplierPoints < 0 ? " negative" : ""}"><small>本局分數</small><strong>${formatSignedScore(game.round.multiplierPoints)} 分</strong></section>${bonusText}${betText}<section class="result-final${game.round.finalRoundChange < 0 ? " negative" : ""}"><small>本局最終變化</small><strong>${formatSignedScore(game.round.finalRoundChange)} 分</strong></section><section class="result-total"><small>總分數</small><strong data-round-total>${totalBefore}</strong></section><p class="result-meta">完成連線 ${game.round.roundLines} 條・分數成就 ${game.round.achievements.size} 項</p></div>`,
+    body: `<div class="round-result"><section class="round-result-change"><small>本局最終變化</small><strong class="${getRoundPointColorClass(game.round.finalRoundChange)}">${formatSignedScore(game.round.finalRoundChange)}</strong></section><section class="score-breakdown" aria-label="本局分數明細">${renderScoreBreakdown()}</section><section class="result-total"><small>目前總分</small><strong data-round-total>${totalBefore}</strong></section></div>`,
     actions: [{ label: gameEnded ? "查看最終成績" : "下一局", action: gameEnded ? showGameOver : startRound }]
   });
   animateRoundTotal(totalBefore, game.score);
@@ -1413,9 +1573,9 @@ function showGameOver() {
   recordRoundHighs();
   updateHUD();
   openModal({
-    icon: "🏆", kicker: "", title: game.playerName || "玩家",
+    icon: "🏆", kicker: "", title: "今晚收攤啦！",
     body: buildScoreReport(),
-    actions: [{ label: "再玩一次", action: resetGame }, { label: "回主選單", className: "secondary", action: returnToMainMenu }]
+    actions: [{ label: "再玩一場", action: resetGame }, { label: "回主選單", className: "secondary", action: returnToMainMenu }]
   });
 }
 
@@ -1429,17 +1589,54 @@ function recordRoundHighs() {
   game.stats.totalLines = game.totalLines;
 }
 
+const ACHIEVEMENT_DEFINITIONS = Object.freeze([
+  { id: "chanceMaker", name: "嗆司Maker", description: "一半以上的牌局成功進入聽牌。", evaluate: s => s.completedRounds > 0 && s.waitingRounds >= Math.ceil(s.completedRounds / 2) },
+  { id: "lineMaster", name: "連線達人", description: "本場累計完成 2 條以上連線。", evaluate: s => s.totalLines >= 2 },
+  { id: "lineLegend", name: "連線傳說", description: "本場累計完成 5 條以上連線。", evaluate: s => s.totalLines >= 5 },
+  { id: "investmentSuccess", name: "投資成功", description: "下注至少 3 次，且成功次數多於失敗次數。", evaluate: s => s.betsPlaced >= 3 && s.betsWon > s.betsLost },
+  { id: "investmentFailure", name: "投資失敗", description: "下注至少 3 次，且失敗次數多於成功次數。", evaluate: s => s.betsPlaced >= 3 && s.betsLost > s.betsWon },
+  { id: "lastTileMaster", name: "撈哥", description: "本場至少完成一次海底撈月。", evaluate: s => s.lastTileFirstLineCount >= 1 },
+  { id: "earlyWaitingMaster", name: "天哥", description: "本場至少完成一次天聽。", evaluate: s => s.earlyWaitingCount >= 1 },
+  { id: "tacticsMaster", name: "戰術大師", description: "本場成功使用主動式道具 3 次以上。", evaluate: s => s.activeItemUses >= 3 },
+  { id: "redEveryRound", name: "中信兄弟", description: "每一局都有取得紅中。", evaluate: s => s.completedRounds > 0 && s.everyRoundRed },
+  { id: "greenEveryRound", name: "一路發發發", description: "每一局都有取得發。", evaluate: s => s.completedRounds > 0 && s.everyRoundGreen },
+  { id: "whiteEveryRound", name: "超級白", description: "每一局都有取得白板。", evaluate: s => s.completedRounds > 0 && s.everyRoundWhite },
+  { id: "wanMaster", name: "萬老師", description: "本場累計取得 30 張以上萬子。", evaluate: s => s.wanTiles >= 30 },
+  { id: "suoMaster", name: "事情大條", description: "本場累計取得 30 張以上條子。", evaluate: s => s.suoTiles >= 30 },
+  { id: "tongMaster", name: "筒神", description: "本場累計取得 30 張以上筒子。", evaluate: s => s.tongTiles >= 30 },
+  { id: "windMaster", name: "風起雲湧", description: "本場累計取得 10 張以上風牌。", evaluate: s => s.windTiles >= 10 }
+]);
+
+function buildAchievementStats(source = game) {
+  const rounds = source.stats.completedRoundStats;
+  const allTileIds = rounds.flatMap(round => round.tileIds);
+  const countSuit = suit => allTileIds.filter(id => GAME_TILES.find(tile => tile.id === id)?.suit === suit).length;
+  return {
+    completedRounds: rounds.length,
+    waitingRounds: rounds.filter(round => round.everWaited).length,
+    totalLines: source.stats.totalLines,
+    betsPlaced: source.stats.betsPlaced, betsWon: source.stats.betsWon, betsLost: source.stats.betsLost,
+    lastTileFirstLineCount: source.stats.lastTileFirstLineCount, earlyWaitingCount: source.stats.earlyWaitingCount,
+    activeItemUses: source.stats.activeItemUses,
+    everyRoundRed: rounds.every(round => round.tileIds.includes("red")),
+    everyRoundGreen: rounds.every(round => round.tileIds.includes("green")),
+    everyRoundWhite: rounds.every(round => round.tileIds.includes("white")),
+    wanTiles: countSuit("wan"), tongTiles: countSuit("tong"), suoTiles: countSuit("suo"),
+    windTiles: allTileIds.filter(id => ["east", "south", "west", "north"].includes(id)).length
+  };
+}
+
+function evaluateAchievements(stats = buildAchievementStats()) {
+  return ACHIEVEMENT_DEFINITIONS.filter(definition => definition.evaluate(stats));
+}
+
 function buildScoreReport() {
-  const s = game.stats;
-  const successRate = s.bonusDrawCount ? Math.round(s.bonusSuccessCount / s.bonusDrawCount * 100) : 0;
-  const eventNetProfit = s.eventScoreGain - s.eventScoreLoss;
-  const betNetProfit = s.betScoreGain - s.betScoreLoss;
-  const betProfitReport = s.betsPlaced > 0 ? `<p><span>下注總損益</span><strong>${formatSignedScore(betNetProfit)}</strong></p>` : "";
-  return `<div class="game-over-report"><strong class="game-over-score">${game.score}</strong><div class="report-grid">
-    <section><h3>總成績</h3><dl class="result-summary"><div><dt>連線數</dt><dd>${game.totalLines}</dd></div><div><dt>總局數</dt><dd>${s.roundsPlayed}</dd></div><div><dt>單局最高分數</dt><dd>${s.highestRoundSettledPoints}</dd></div><div><dt>補牌</dt><dd>${s.bonusSuccessCount} / ${s.bonusDrawCount}（${successRate}%）</dd></div></dl></section>
-    <section><h3>牌型成就</h3><p>萬子 5／7／9 張：<strong>${s.wan5Count}／${s.wan7Count}／${s.wan9Count}</strong><br>筒子 5／7／9 張：<strong>${s.tong5Count}／${s.tong7Count}／${s.tong9Count}</strong><br>條子 5／7／9 張：<strong>${s.tiao5Count}／${s.tiao7Count}／${s.tiao9Count}</strong><br>四風：<strong>${s.fourWindsCount}</strong><br>三元：<strong>${s.threeDragonsCount}</strong><br>天聽：<strong>${s.earlyWaitingCount}</strong><br>海底撈月：<strong>${s.lastTileFirstLineCount}</strong></p></section>
-    <section class="profit-summary"><h3>${s.betsPlaced > 0 ? "事件與下注" : "事件"}</h3><p><span>事件總損益</span><strong>${formatSignedScore(eventNetProfit)}</strong></p>${betProfitReport}</section>
-  </div></div>`;
+  const earned = evaluateAchievements();
+  game.stats.earnedAchievements = earned.map(achievement => achievement.id);
+  const list = earned.length
+    ? earned.map(achievement => `<article class="achievement-card"><b>🏆 ${escapeHtml(achievement.name)}</b><p>${escapeHtml(achievement.description)}</p></article>`).join("")
+    : '<p class="achievement-empty">這場沒有取得稱號</p>';
+  return `<div class="game-over-report"><section class="game-over-final"><strong class="game-over-score">${game.score}</strong><small>最終分數</small></section><section class="achievement-report"><h3>本場獲得稱號</h3><div class="achievement-list">${list}</div></section></div>`;
 }
 
 function formatSignedScore(value) { return value > 0 ? `+${value}` : String(value); }
@@ -1526,7 +1723,7 @@ function openModal({ icon, kicker, title, body, actions }) {
   elements.modalKicker.textContent = kicker;
   elements.modalTitle.textContent = title;
   elements.modalBody.innerHTML = body;
-  elements.modal.querySelector(".modal-card").classList.toggle("modal-card-wide", /betting-panel|report-grid|event-guide/.test(body));
+  elements.modal.querySelector(".modal-card").classList.toggle("modal-card-wide", /betting-panel|report-grid|event-guide|memory-master/.test(body));
   elements.modal.classList.toggle("game-over-modal", /game-over-report/.test(body));
   renderModalActions(actions);
   elements.modal.classList.add("open");
@@ -1658,6 +1855,7 @@ function savePlayerName(name) {
 
 function resetGame() {
   const playerName = game.playerName;
+  clearMiniGameLifecycle();
   game = freshGameState(playerName);
   hideTileOverview();
   elements.startScreen.classList.add("hidden");
@@ -1708,6 +1906,7 @@ function cancelMainMenu() { game.uiOverlayOpen = false; closeModal(); }
 
 function returnToMainMenu() {
   const playerName = game.playerName || elements.playerNameInput.value.trim().slice(0, 12);
+  clearMiniGameLifecycle();
   game = freshGameState(playerName);
   showStartScreen();
 }

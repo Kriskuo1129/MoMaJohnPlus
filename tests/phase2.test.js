@@ -32,7 +32,7 @@ const getElement = selector => { if (!elements.has(selector)) elements.set(selec
 const document = { querySelector: getElement, querySelectorAll: () => [], createElement: () => new FakeElement(), documentElement: new FakeElement(), body: new FakeElement(), fonts: { check: () => true } };
 const context = vm.createContext({
   console, document, localStorage: { getItem: () => "", setItem() {} }, performance: { now: () => 0 },
-  requestAnimationFrame() {}, setTimeout() {}, clearTimeout() {}, Math, Object, Array, Set, Map, String, Number, Boolean
+  requestAnimationFrame() {}, setTimeout() {}, clearTimeout() {}, setInterval() {}, clearInterval() {}, Math, Object, Array, Set, Map, String, Number, Boolean
 });
 const root = path.resolve(__dirname, "..");
 const source = `${fs.readFileSync(path.join(root, "game-config.js"), "utf8")}\n${fs.readFileSync(path.join(root, "game.js"), "utf8")}\n
@@ -129,8 +129,8 @@ vm.runInContext(source, context);
 const api = context.phase2Test;
 
 (async () => {
-  assert.deepEqual([...api.available()], ["pachinko", "baseball9", "memoryMatch"]);
-  assert.equal(api.select(0), "pachinko"); assert.equal(api.select(0.4), "baseball9"); assert.equal(api.select(0.8), "memoryMatch");
+  assert.deepEqual([...api.available()], ["pachinko", "baseball9", "memoryMaster"]);
+  assert.equal(api.select(0), "pachinko"); assert.equal(api.select(0.4), "baseball9"); assert.equal(api.select(0.8), "memoryMaster");
   assert.equal(api.select(0.8, "pachinko"), "pachinko"); assert.equal(api.select(0.2, "baseball9"), "baseball9");
   assert.deepEqual(JSON.parse(JSON.stringify(api.placeholder(0.1))), { success: true });
   assert.deepEqual(JSON.parse(JSON.stringify(api.placeholder(0.9))), { success: false });
@@ -165,7 +165,7 @@ const api = context.phase2Test;
   for (const itemId of ["pocket-green", "pocket-red", "pocket-white"]) { const cancelled = api.pocketCancel(itemId); assert.deepEqual(cancelled.after, cancelled.before); }
 
   const restarted = api.restart("pachinko");
-  assert.deepEqual(JSON.parse(JSON.stringify(restarted.miniGame)), { offered: false, completed: false, selectedId: null, challengeResult: null, challengeResolved: false, failureDrawStarted: false });
+  assert.deepEqual(JSON.parse(JSON.stringify(restarted.miniGame)), { offered: false, completed: false, selectedId: null, challengeResult: null, challengeResolved: false, failureDrawStarted: false, memory: null });
   assert.equal(restarted.tilePicker, null); assert.equal(restarted.forced, "pachinko"); assert.equal(restarted.attemptsSame, true); assert.equal(api.bonusDoesNotOffer(), false);
   console.log("Phase 2 challenge contract and shared tile picker tests: PASS");
 })().catch(error => { console.error(error); process.exitCode = 1; });

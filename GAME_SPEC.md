@@ -80,9 +80,11 @@ Phase 1-C 已將 Placeholder 替換為 `PRE_ROUND_EVENT_DEFINITIONS` 正式 Pool
 
 ## 8. 小遊戲池
 
-正式 Mini-game Registry：彈珠台、棒球九宮格、記憶力對對碰。
+正式 Mini-game Registry：記憶大師、彈珠台、棒球九宮格。Phase 3-A 已完成記憶大師正式玩法；後兩款仍為 Placeholder。
 
-Phase 2 在玩家準備取得正式第 13 張時顯示不可略過關閉的 Opportunity Card，玩家必須選擇「進入」或「直接摸牌」。直接摸牌會立即由 Main Game 執行普通隨機摸牌；挑戰失敗則停在不可關閉的 Result Card，直到玩家按「摸牌」才執行普通隨機摸牌；挑戰成功直接開啟不可取消的 Shared Tile Picker，讓玩家從合法 `remainingTiles` 自選一張。Picker 的「查看牌型」以 authoritative Round State 顯示唯讀縮小版 6×6 目前棋盤及 34 張普通牌 Overview，尚未 Confirm 的選擇不會提前反映在棋盤。Mini-game Contract 只回傳 `{ success }`，不決定 `tileId`；三條路徑最後都經共用正式取得牌 Pipeline 成為第 13 張，不增加額外牌，也不提供分數、局數、倍率、道具或其他 Reward。Phase 2 僅提供三款 50／50 Placeholder，Phase 3 真正玩法也只需回傳成功或失敗。
+Phase 2 在玩家準備取得正式第 13 張時顯示不可略過關閉的 Opportunity Card，玩家必須選擇「進入」或「直接摸牌」。直接摸牌會立即由 Main Game 執行普通隨機摸牌；挑戰失敗則停在不可關閉的 Result Card，直到玩家按「摸牌」才執行普通隨機摸牌；挑戰成功直接開啟不可取消的 Shared Tile Picker，讓玩家從合法 `remainingTiles` 自選一張。Picker 的「查看牌型」以 authoritative Round State 顯示唯讀縮小版 6×6 目前棋盤及 34 張普通牌 Overview，尚未 Confirm 的選擇不會提前反映在棋盤。Mini-game Contract 只回傳 `{ success }`，不決定 `tileId`；三條路徑最後都經共用正式取得牌 Pipeline 成為第 13 張，不增加額外牌，也不提供分數、局數、倍率、道具或其他 Reward。
+
+Phase 3-A「記憶大師」每次等權隨機選擇水果、動物、食物、運動之一，再以 50／50 選擇中文或 English；從該主題 12 個候選抽取 4 個不同項目並洗牌。牌面完整顯示 5 秒倒數後全部蓋起，題目以 Instruction、大型 Emoji 與在地化名稱呈現，玩家只猜一次；答對回傳 SUCCESS，答錯會先揭示所選牌、1 秒後再揭示正確牌，短暫停留後回傳 FAILURE。所有 Setup RNG 可注入測試，倒數、延遲揭牌與結果 Timer 均納入 Mini-game lifecycle cleanup。
 
 ## 9. Item 池
 
@@ -224,3 +226,9 @@ Pool 保留 16 個唯一 Event ID。9 個 BET、6 個 SPECIAL 各權重 1；唯�
 瓦斯桶爆炸在 END_GAME handler 前被擋，不扣剩餘局數、不 Game Over；停電在 END_ROUND 前被擋，不提前結算；故意不小心被擋不移牌。按「繼續」回正常摸牌；若已到最後一張，仍依原本正常局末／BONUS 流程前進。
 
 POSITIVE、NEUTRAL、BET 失敗、PRE_ROUND SPECIAL、下注扣分、槓桿、道具替換與未來小遊戲不觸發護身符。Shield 不增扣分、不額外消耗局數。棒球 Restart 保留目前 inventory，已耗護身符不復活，未耗者保留。本局與 BET delta 可為負數，總分最低 0。
+
+## 15. Settlement 與 Achievement V1
+
+正式加扣 rawPoints 時同步寫入結構化 `scoreBreakdown`，同來源合併次數與原始分數；局末依 `finalMultiplier` 顯示受倍率影響的項目，BET 保持獨立且不顯示倍率。單局最終變化以結算後總分減結算前總分計算，因此總分 floor 0 生效時顯示玩家真正的總分變化。Round Result 固定顯示最終變化與目前總分，中間明細獨立捲動。
+
+每個正式完成局保存最終正式牌、是否曾聽牌及成功消耗的主動口袋道具次數；Restart、Bonus、Mini-game 不建立完成局。GAME OVER 依完成局資料評估 15 個當場稱號，可同時取得多個、不永久保存、不顯示未取得項目。最終畫面只顯示最終分數與可捲動稱號清單；舊統計仍保留供正式邏輯、回歸與稱號判定使用。
