@@ -32,14 +32,9 @@
       </section>
     </header>
 
-    <section id="pre-round-panel" class="pre-round-panel hidden" aria-labelledby="pre-round-title">
-      <header class="pre-round-header">
-        <p>PRE-ROUND</p>
-        <h2 id="pre-round-title">開局準備</h2>
-        <span>選擇場中事件與槓桿，按下開牌局後才會正式生效。</span>
-      </header>
+    <section id="pre-round-panel" class="pre-round-panel hidden" aria-labelledby="pre-round-event-title">
       <section class="pre-round-section" aria-labelledby="pre-round-event-title">
-        <h3 id="pre-round-event-title">場中事件 <small>每局隨機三選一</small></h3>
+        <h3 id="pre-round-event-title">開局準備</h3>
         <div id="pre-round-event-options" class="pre-round-event-options"></div>
         <button id="pre-round-skip-button" class="pre-round-skip-button" type="button" aria-pressed="false">這局不選事件</button>
       </section>
@@ -67,8 +62,8 @@
   </main>
 
   <div id="tile-overview-overlay" class="tile-overview-overlay" aria-hidden="true">
-    <div class="tile-overview-card" role="dialog" aria-modal="true" aria-labelledby="tile-overview-title">
-      <p>QUICK PEEK</p><h2 id="tile-overview-title">已抽牌型</h2><div id="tile-overview-grid" class="tile-overview-grid"></div>
+    <div class="tile-overview-card" role="dialog" aria-modal="true" aria-label="已抽牌型">
+      <div id="tile-overview-grid" class="tile-overview-grid"></div>
       <button id="tile-overview-close" class="guide-button" type="button">關閉</button>
     </div>
   </div>

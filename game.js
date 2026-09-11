@@ -149,9 +149,8 @@ function renderPreRound() {
     button.className = `pre-round-event-card pre-round-event-${event.type.toLowerCase()}${selected ? " selected" : ""}`;
     button.dataset.eventId = event.id;
     button.setAttribute("aria-pressed", String(selected));
-    const outcome = event.type === "BET" ? `<em>成功 +${event.reward}｜失敗 -${event.penalty}</em>` : "";
-    const typeLabel = { BET: "下注", SPECIAL: "特殊", ITEM: "道具" }[event.type];
-    button.innerHTML = `<small>${typeLabel}</small><b>${event.title}</b><span>${event.description}</span>${outcome}`;
+    const description = event.type === "BET" ? `${event.description} 成功 +${event.reward}／失敗 -${event.penalty}` : event.description;
+    button.innerHTML = `<b>${event.title}</b><span>${description}</span>`;
     button.addEventListener("click", selectPreRoundEvent);
     return button;
   }));
@@ -492,7 +491,7 @@ function renderTileOverview() {
     ["條子", CORE_TILES.filter(tile => tile.suit === "suo")],
     ["字牌", CORE_TILES.filter(tile => tile.group)]
   ];
-  elements.tileOverviewGrid.innerHTML = `<section class="mini-board-overview"><h3>目前棋盤</h3>${renderMiniBoardOverview()}</section><div class="ordinary-tile-overview"><h3>已抽牌型</h3>${groups.map(([title, tiles]) => `<section><h3>${title}</h3><div>${tiles.map(tile => `<span class="overview-tile${isOfficiallyDrawn(tile.id) ? " acquired" : ""}" aria-label="${tile.label}${isOfficiallyDrawn(tile.id) ? "，已取得" : "，未取得"}">${tile.glyph}</span>`).join("")}</div></section>`).join("")}</div>`;
+  elements.tileOverviewGrid.innerHTML = `<section class="mini-board-overview">${renderMiniBoardOverview()}</section><div class="ordinary-tile-overview">${groups.map(([title, tiles]) => `<section><h3>${title}</h3><div>${tiles.map(tile => `<span class="overview-tile${isOfficiallyDrawn(tile.id) ? " acquired" : ""}" aria-label="${tile.label}${isOfficiallyDrawn(tile.id) ? "，已取得" : "，未取得"}">${tile.glyph}</span>`).join("")}</div></section>`).join("")}</div>`;
 }
 
 function miniBoardTileStateClass(tile, index) {
