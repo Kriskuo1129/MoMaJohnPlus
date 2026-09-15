@@ -39,17 +39,20 @@ const source = `${fs.readFileSync(path.join(root, "game-config.js"), "utf8")}\n$
 animateStackTile = async () => {};
 let phase2AcquireCount = 0;
 let phase2RandomTileCount = 0;
+let phase2EventChoiceCount = 0;
 const phase2OriginalAcquire = acquireFormalTile;
 const phase2OriginalRandomTile = selectRandomRemainingTile;
-acquireFormalTile = async tile => { phase2AcquireCount += 1; return phase2OriginalAcquire(tile); };
+const phase2OriginalEventChoice = openEventChoice;
+acquireFormalTile = async (tile, options) => { phase2AcquireCount += 1; return phase2OriginalAcquire(tile, options); };
 selectRandomRemainingTile = (tiles, random) => { phase2RandomTileCount += 1; return phase2OriginalRandomTile(tiles, random); };
+openEventChoice = tile => { phase2EventChoiceCount += 1; return phase2OriginalEventChoice(tile); };
 globalThis.phase2Test = {
   definitions: MINIGAME_DEFINITIONS,
   setup(formalDrawCount = 15, forcedMiniGameId = null) {
     game = freshGameState("TEST"); game.round = createRound(formalDrawCount, []);
     game.round.committed = true; game.round.started = true;
     game.round.config = { formalDrawCount, forcedMiniGameId, leverageMultiplier: 1, finalMultiplier: 1, activeBetId: null };
-    game.state = GAME_STATES.DRAWING; phase2AcquireCount = 0; phase2RandomTileCount = 0; return game.round;
+    game.state = GAME_STATES.DRAWING; phase2AcquireCount = 0; phase2RandomTileCount = 0; phase2EventChoiceCount = 0; return game.round;
   },
   putNext(round, tileId) { const order = [...round.hand, ...round.remaining]; const targetIndex = order.findIndex(tile => tile.id === tileId); [order[round.drawIndex], order[targetIndex]] = [order[targetIndex], order[round.drawIndex]]; round.hand = order.slice(0, round.formalDrawCount); round.remaining = order.slice(round.formalDrawCount); },
   available() { return getAvailableMiniGames().map(definition => definition.id); },
@@ -60,8 +63,12 @@ globalThis.phase2Test = {
     const round = this.setup(15, forced); round.drawIndex = 12; openMiniGameOffer(); const result = await directDrawMiniGameTile();
     return { result, drawIndex: round.drawIndex, acquired: phase2AcquireCount, randomTiles: phase2RandomTileCount, completed: round.miniGame.completed, state: game.state, secondOffer: openMiniGameOffer() };
   },
-  async challenge(success, forced = null) {
-    const round = this.setup(15, forced); round.drawIndex = 12; openMiniGameOffer(); startMiniGame();
+  async challenge(success, forced = null, futureTileIds = []) {
+    const round = this.setup(15, forced); round.drawIndex = 12;
+    const order = [...round.hand, ...round.remaining];
+    const futureTiles = futureTileIds.map(id => order.splice(order.findIndex(tile => tile.id === id), 1)[0]);
+    order.splice(round.drawIndex, 0, ...futureTiles); round.hand = order.slice(0, round.formalDrawCount); round.remaining = order.slice(round.formalDrawCount);
+    openMiniGameOffer(); startMiniGame();
     const before = { drawIndex: round.drawIndex, acquired: phase2AcquireCount, randomTiles: phase2RandomTileCount };
     const resolution = await resolveMiniGameChallenge({ success });
     return { round, resolution, before, state: game.state, acquired: phase2AcquireCount, randomTiles: phase2RandomTileCount, picker: round.tilePicker };
@@ -74,6 +81,16 @@ globalThis.phase2Test = {
   },
   selectTile(tileId) { return selectTilePickerTile(tileId); },
   async confirm() { return confirmTilePicker(); },
+  pickerHtml() { return document.querySelector("#modal-body").innerHTML; },
+  async rewardEvent(tileId) {
+    const result = await this.challenge(true, null, [tileId]); this.selectTile(tileId); const selected = await this.confirm();
+    return { selected, drawIndex: result.round.drawIndex, drawn: result.round.drawn.has(tileId), state: game.state, eventChoices: phase2EventChoiceCount };
+  },
+  async normalEvent(tileId) {
+    const round = this.setup(); const tile = GAME_TILES.find(item => item.id === tileId); await acquireFormalTile(tile);
+    return { drawIndex: round.drawIndex, drawn: round.drawn.has(tileId), state: game.state, eventChoices: phase2EventChoiceCount };
+  },
+  pocketCandidates() { const round = this.setup(); game.items = ["pocket-green"]; round.drawn.add("wan-1"); round.drawn.add("event-1"); return pocketReplacementCandidates(itemById("pocket-green")).map(tile => tile.id); },
   pickerState() { const picker = game.round.tilePicker; return { selected: picker?.selectedTileId, confirmDisabled: document.querySelector("#modal-actions").children.at(-1)?.disabled, drawIndex: game.round.drawIndex, acquired: phase2AcquireCount, randomTiles: phase2RandomTileCount }; },
   overviewRoundTrip() { showTilePickerOverview(); hideTileOverview(); return game.round.tilePicker?.selectedTileId; },
   miniBoardState() {
@@ -92,7 +109,7 @@ globalThis.phase2Test = {
     } else {
       game.items = ["pocket-green"]; game.uiOverlayOpen = true; beginPocketItemUse(0);
     }
-    const selected = kind === "reward" ? game.round.tilePicker.tiles.find(id => id !== "wan-1") : "wan-1"; selectTilePickerTile(selected);
+    const selected = kind === "reward" ? game.round.tilePicker.tiles.find(id => !GAME_TILES.find(tile => tile.id === id)?.special && id !== "wan-1") : "wan-1"; selectTilePickerTile(selected);
     const target = kind === "pocket" ? "green" : selected;
     return { selected, target, targetLabel: CORE_TILES.find(tile => tile.id === target).label, html: renderMiniBoardOverview(), drawn: game.round.drawn.has(target) };
   },
@@ -146,12 +163,21 @@ const api = context.phase2Test;
   const failedDraw = await api.finishFailure(true);
   assert.deepEqual({ drawIndex: failedDraw.drawIndex, acquired: failedDraw.acquired, randomTiles: failedDraw.randomTiles, completed: failedDraw.completed, state: failedDraw.state, second: failedDraw.second }, { drawIndex: 13, acquired: 1, randomTiles: 1, completed: true, state: "DRAWING", second: false });
 
-  const success = await api.challenge(true);
-  assert.equal(success.state, "MINIGAME_REWARD"); assert.ok(success.picker.tiles.length > 0); assert.equal(success.acquired, 0); assert.equal(success.randomTiles, 0); assert.equal(api.pickerState().confirmDisabled, true);
-  const first = success.picker.tiles[0]; const second = success.picker.tiles[1];
+  const success = await api.challenge(true, null, ["event-1", "event-2"]);
+  assert.equal(success.state, "MINIGAME_REWARD"); assert.ok(success.picker.tiles.length > 0); assert.ok(success.picker.tiles.some(id => !id.startsWith("event-"))); assert.ok(success.picker.tiles.includes("event-1")); assert.ok(success.picker.tiles.includes("event-2")); assert.equal(success.acquired, 0); assert.equal(success.randomTiles, 0); assert.equal(api.pickerState().confirmDisabled, true);
+  assert.match(api.pickerHtml(), /data-picker-tile-id="event-1"/); assert.match(api.pickerHtml(), /data-picker-tile-id="event-2"/); assert.match(api.pickerHtml(), /special-face/);
+  const ordinary = success.picker.tiles.filter(id => !id.startsWith("event-")); const first = ordinary[0]; const second = ordinary[1];
   api.selectTile(first); assert.equal(api.pickerState().selected, first); assert.equal(api.pickerState().confirmDisabled, false); assert.equal(api.pickerState().acquired, 0);
   api.selectTile(second); assert.equal(api.pickerState().selected, second); assert.equal(api.overviewRoundTrip(), second);
   const confirmed = await api.confirm(); assert.equal(confirmed, second); assert.equal(api.pickerState().drawIndex, 13); assert.equal(api.pickerState().acquired, 1); assert.equal(api.pickerState().randomTiles, 0); assert.equal(success.round.drawn.has(second), true);
+
+  for (const eventId of ["event-1", "event-2"]) {
+    const rewardEvent = await api.rewardEvent(eventId);
+    assert.equal(rewardEvent.selected, eventId); assert.equal(rewardEvent.drawIndex, 13); assert.equal(rewardEvent.drawn, true); assert.equal(rewardEvent.state, "DRAWING"); assert.equal(rewardEvent.eventChoices, 0);
+  }
+  const normalEvent = await api.normalEvent("event-1");
+  assert.equal(normalEvent.drawIndex, 1); assert.equal(normalEvent.drawn, true); assert.equal(normalEvent.state, "EVENT_REVEAL"); assert.equal(normalEvent.eventChoices, 1);
+  const pocketCandidates = api.pocketCandidates(); assert.ok(pocketCandidates.includes("wan-1")); assert.equal(pocketCandidates.includes("event-1"), false); assert.equal(pocketCandidates.includes("event-2"), false);
 
   for (const forced of ["pachinko", "baseball9"]) {
     const forcedSuccess = await api.challenge(true, forced); assert.equal(forcedSuccess.round.miniGame.selectedId, forced); assert.ok(forcedSuccess.picker);

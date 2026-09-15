@@ -552,7 +552,7 @@ function openTilePicker({ title, message, tiles, confirmText, allowOverview = tr
 function renderTilePicker() {
   const picker = game.round?.tilePicker;
   if (!picker) return false;
-  const candidates = picker.tiles.map(id => CORE_TILES.find(tile => tile.id === id)).filter(Boolean);
+  const candidates = picker.tiles.map(id => GAME_TILES.find(tile => tile.id === id)).filter(Boolean);
   const selected = candidates.find(tile => tile.id === picker.selectedTileId);
   const actions = [];
   if (picker.allowOverview) actions.push({ label: "查看牌型", className: "secondary", action: showTilePickerOverview });
@@ -669,9 +669,9 @@ function selectMiniGameForRound(random = Math.random) {
   return available[Math.floor(random() * available.length)] ?? null;
 }
 
-function getRemainingFormalTiles() {
+function getRemainingFormalTiles({ includeSpecial = false } = {}) {
   return [...game.round.hand.slice(game.round.drawIndex), ...game.round.remaining]
-    .filter(tile => !tile.special && !isOfficiallyDrawn(tile.id));
+    .filter(tile => (includeSpecial || !tile.special) && !isOfficiallyDrawn(tile.id));
 }
 
 function selectRandomRemainingTile(remainingTiles, random = Math.random) {
@@ -889,7 +889,7 @@ function completeRandomMiniGameDraw() {
 
 function openMiniGameRewardPicker() {
   if (game.state !== GAME_STATES.MINIGAME_ACTIVE || game.round.miniGame.challengeResult !== "SUCCESS" || game.round.miniGame.completed) return false;
-  const candidates = getRemainingFormalTiles();
+  const candidates = getRemainingFormalTiles({ includeSpecial: true });
   if (!candidates.length) {
     console.warn("Mini-game reward has no legal tile candidates; using safe normal draw recovery.");
     return completeRandomMiniGameDraw();
@@ -905,9 +905,9 @@ function openMiniGameRewardPicker() {
 
 async function confirmMiniGameReward(tileId) {
   if (game.state !== GAME_STATES.MINIGAME_REWARD || game.round.miniGame.completed) return false;
-  const selected = getRemainingFormalTiles().find(tile => tile.id === tileId);
+  const selected = getRemainingFormalTiles({ includeSpecial: true }).find(tile => tile.id === tileId);
   if (!selected) {
-    const candidates = getRemainingFormalTiles();
+    const candidates = getRemainingFormalTiles({ includeSpecial: true });
     if (!candidates.length) {
       console.warn("Mini-game reward selection became empty; using safe normal draw recovery.");
       closeTilePicker();
@@ -921,15 +921,15 @@ async function confirmMiniGameReward(tileId) {
   }
   if (!placeTileAtNextFormalDraw(selected.id)) return false;
   closeTilePicker();
-  return completeMiniGameFormalDraw(selected);
+  return completeMiniGameFormalDraw(selected, { suppressEvent: true });
 }
 
-async function completeMiniGameFormalDraw(selected) {
+async function completeMiniGameFormalDraw(selected, acquireOptions = {}) {
   if (game.round.miniGame.completed) return false;
   game.round.miniGame.completed = true;
   game.state = GAME_STATES.DRAWING;
   closeModal();
-  await acquireFormalTile(selected);
+  await acquireFormalTile(selected, acquireOptions);
   return selected.id;
 }
 
@@ -948,13 +948,13 @@ async function drawTile() {
   return acquireFormalTile(tile);
 }
 
-async function acquireFormalTile(tile) {
+async function acquireFormalTile(tile, { suppressEvent = false } = {}) {
   if (game.state !== GAME_STATES.DRAWING || !tile || game.busy) return false;
   game.busy = true;
   game.round.drawn.add(tile.id);
   await animateStackTile(tile);
   game.round.drawIndex += 1;
-  if (!tile.special) {
+  if (!tile.special || suppressEvent) {
     markBoard(tile);
     scoreLines();
     scoreCollections();
@@ -963,7 +963,7 @@ async function acquireFormalTile(tile) {
   game.busy = false;
   updateHUD();
   elements.message.textContent = "";
-  if (tile.special) return openEventChoice(tile);
+  if (tile.special && !suppressEvent) return openEventChoice(tile);
   continueAfterDraw();
   return true;
 }
