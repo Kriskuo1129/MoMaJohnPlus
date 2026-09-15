@@ -90,7 +90,6 @@ globalThis.phase2Test = {
     const round = this.setup(); const tile = GAME_TILES.find(item => item.id === tileId); await acquireFormalTile(tile);
     return { drawIndex: round.drawIndex, drawn: round.drawn.has(tileId), state: game.state, eventChoices: phase2EventChoiceCount };
   },
-  pocketCandidates() { const round = this.setup(); game.items = ["pocket-green"]; round.drawn.add("wan-1"); round.drawn.add("event-1"); return pocketReplacementCandidates(itemById("pocket-green")).map(tile => tile.id); },
   pickerState() { const picker = game.round.tilePicker; return { selected: picker?.selectedTileId, confirmDisabled: document.querySelector("#modal-actions").children.at(-1)?.disabled, drawIndex: game.round.drawIndex, acquired: phase2AcquireCount, randomTiles: phase2RandomTileCount }; },
   overviewRoundTrip() { showTilePickerOverview(); hideTileOverview(); return game.round.tilePicker?.selectedTileId; },
   miniBoardState() {
@@ -102,16 +101,11 @@ globalThis.phase2Test = {
     const html = renderMiniBoardOverview();
     return { html, order: round.board.map(tile => tile.id), cells: (html.match(/class="mini-board-tile/g) || []).length };
   },
-  uncommittedOverview(kind = "reward") {
+  uncommittedOverview() {
     const round = this.setup(); round.board = [...CORE_TILES, ...GAME_TILES.filter(tile => tile.special)]; round.drawn.add("wan-1");
-    if (kind === "reward") {
-      round.drawIndex = 12; round.miniGame.challengeResolved = true; round.miniGame.challengeResult = "SUCCESS"; game.state = GAME_STATES.MINIGAME_ACTIVE; openMiniGameRewardPicker();
-    } else {
-      game.items = ["pocket-green"]; game.uiOverlayOpen = true; beginPocketItemUse(0);
-    }
-    const selected = kind === "reward" ? game.round.tilePicker.tiles.find(id => !GAME_TILES.find(tile => tile.id === id)?.special && id !== "wan-1") : "wan-1"; selectTilePickerTile(selected);
-    const target = kind === "pocket" ? "green" : selected;
-    return { selected, target, targetLabel: CORE_TILES.find(tile => tile.id === target).label, html: renderMiniBoardOverview(), drawn: game.round.drawn.has(target) };
+    round.drawIndex = 12; round.miniGame.challengeResolved = true; round.miniGame.challengeResult = "SUCCESS"; game.state = GAME_STATES.MINIGAME_ACTIVE; openMiniGameRewardPicker();
+    const selected = game.round.tilePicker.tiles.find(id => !GAME_TILES.find(tile => tile.id === id)?.special && id !== "wan-1"); selectTilePickerTile(selected);
+    return { selected, target: selected, targetLabel: CORE_TILES.find(tile => tile.id === selected).label, html: renderMiniBoardOverview(), drawn: game.round.drawn.has(selected) };
   },
   async formalEffects() {
     const round = this.setup(); round.board = [...CORE_TILES, ...GAME_TILES.filter(tile => tile.special)];
@@ -129,12 +123,6 @@ globalThis.phase2Test = {
     const round = this.setup(); game.score = 100; round.config.activeBetId = "chiikawa"; round.drawn.add("wan-1"); round.drawn.add("tong-1");
     round.drawIndex = 12; this.putNext(round, "suo-1"); round.miniGame.challengeResolved = true; round.miniGame.challengeResult = "SUCCESS"; game.state = GAME_STATES.MINIGAME_ACTIVE; openMiniGameRewardPicker();
     selectTilePickerTile("suo-1"); await confirmTilePicker(); return settleBets()[0]?.won;
-  },
-  pocketCancel(itemId) {
-    const round = this.setup(); game.items = [itemId]; round.drawn.add("wan-1"); game.uiOverlayOpen = true;
-    const before = { items: [...game.items], drawn: [...round.drawn], hand: round.hand.map(tile => tile.id), remaining: round.remaining.map(tile => tile.id) };
-    beginPocketItemUse(0); selectTilePickerTile("wan-1"); cancelTilePicker();
-    return { before, after: { items: [...game.items], drawn: [...round.drawn], hand: round.hand.map(tile => tile.id), remaining: round.remaining.map(tile => tile.id) } };
   },
   restart(forced) {
     const round = this.setup(15, forced); round.drawIndex = 12; openMiniGameOffer(); startMiniGame(); resolveMiniGameChallenge({ success: true }); selectTilePickerTile(game.round.tilePicker.tiles[0]);
@@ -177,7 +165,6 @@ const api = context.phase2Test;
   }
   const normalEvent = await api.normalEvent("event-1");
   assert.equal(normalEvent.drawIndex, 1); assert.equal(normalEvent.drawn, true); assert.equal(normalEvent.state, "EVENT_REVEAL"); assert.equal(normalEvent.eventChoices, 1);
-  const pocketCandidates = api.pocketCandidates(); assert.ok(pocketCandidates.includes("wan-1")); assert.equal(pocketCandidates.includes("event-1"), false); assert.equal(pocketCandidates.includes("event-2"), false);
 
   for (const forced of ["pachinko", "baseball9"]) {
     const forcedSuccess = await api.challenge(true, forced); assert.equal(forcedSuccess.round.miniGame.selectedId, forced); assert.ok(forcedSuccess.picker);
@@ -185,11 +172,9 @@ const api = context.phase2Test;
   }
   const miniBoard = api.miniBoardState();
   assert.equal(miniBoard.cells, 36); assert.deepEqual(miniBoard.order, api.miniBoardState().order); assert.match(miniBoard.html, /mini-line-completed/); assert.match(miniBoard.html, /mini-line-waiting/); assert.match(miniBoard.html, /tile-acquired/); assert.match(miniBoard.html, /tile-unclaimed/); assert.doesNotMatch(miniBoard.html, /<button/);
-  for (const kind of ["reward", "pocket"]) { const pending = api.uncommittedOverview(kind); assert.equal(pending.drawn, false); assert.match(pending.html, new RegExp(`aria-label="${pending.targetLabel}，尚未取得"`)); }
+  const pending = api.uncommittedOverview(); assert.equal(pending.drawn, false); assert.match(pending.html, new RegExp(`aria-label="${pending.targetLabel}，尚未取得"`));
   const line = await api.formalEffects(); assert.equal(line.drawIndex, 13); assert.equal(line.drawn, true); assert.equal(line.line, true);
   const waiting = await api.waitingEffect(); assert.equal(waiting.everWaited, true); assert.ok(waiting.waiting > 0); assert.equal(await api.betEffect(), true);
-  for (const itemId of ["pocket-green", "pocket-red", "pocket-white"]) { const cancelled = api.pocketCancel(itemId); assert.deepEqual(cancelled.after, cancelled.before); }
-
   const restarted = api.restart("pachinko");
   assert.deepEqual(JSON.parse(JSON.stringify(restarted.miniGame)), { offered: false, completed: false, selectedId: null, challengeResult: null, challengeResolved: false, failureDrawStarted: false, memory: null });
   assert.equal(restarted.tilePicker, null); assert.equal(restarted.forced, "pachinko"); assert.equal(restarted.attemptsSame, true); assert.equal(api.bonusDoesNotOffer(), false);

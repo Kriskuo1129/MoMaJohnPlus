@@ -406,17 +406,12 @@ function currentRoundStatusText() {
   return event.title;
 }
 
-function pocketReplacementCandidates(item) {
-  if (!item?.targetTileId) return [];
-  return CORE_TILES.filter(tile => tile.id !== item.targetTileId && isOfficiallyDrawn(tile.id));
-}
-
 function canUsePocketItem(item) {
-  return game.state === GAME_STATES.DRAWING && !game.busy && !isOfficiallyDrawn(item.targetTileId) && pocketReplacementCandidates(item).length > 0;
+  return Boolean(item?.targetTileId) && game.state === GAME_STATES.DRAWING && !game.busy && !isOfficiallyDrawn(item.targetTileId);
 }
 
 function canAttemptPocketItemUse(item) {
-  return game.state === GAME_STATES.DRAWING && !game.busy && !isOfficiallyDrawn(item.targetTileId);
+  return canUsePocketItem(item);
 }
 
 function openItemStatus() {
@@ -437,50 +432,26 @@ function closeItemStatus() { game.uiOverlayOpen = false; closeModal(); }
 function beginPocketItemUse(index) {
   const item = itemById(game.items[index]);
   if (!item?.targetTileId || !canAttemptPocketItemUse(item)) return false;
-  const candidates = pocketReplacementCandidates(item);
-  if (!candidates.length) {
-    notifyScore("目前沒有可以替換的牌");
-    return false;
-  }
-  const target = GAME_TILES.find(tile => tile.id === item.targetTileId);
-  openTilePicker({
-    title: item.title, message: `選擇一張要替換成${target.label}的牌`, tiles: candidates,
-    confirmText: "替換", allowOverview: true, allowCancel: true,
-    onConfirm: tileId => completePocketItemUse(index, tileId), onCancel: reopenItemStatus
-  });
-  return true;
+  return completePocketItemUse(index);
 }
 
-function reopenItemStatus() { openItemStatus(); }
-
-function swapTileIds(collection, firstId, secondId) {
-  const firstIndex = collection.findIndex(tile => tile.id === firstId);
-  const secondIndex = collection.findIndex(tile => tile.id === secondId);
-  if (firstIndex < 0 || secondIndex < 0) return false;
-  [collection[firstIndex], collection[secondIndex]] = [collection[secondIndex], collection[firstIndex]];
-  return true;
-}
-
-function completePocketItemUse(index, sourceTileId) {
+function completePocketItemUse(index) {
   const item = itemById(game.items[index]);
-  if (!item?.targetTileId || !canUsePocketItem(item) || !isOfficiallyDrawn(sourceTileId) || GAME_TILES.find(tile => tile.id === sourceTileId)?.special) return false;
+  if (!item?.targetTileId || !canUsePocketItem(item)) return false;
   const targetTileId = item.targetTileId;
-  swapTileIds(game.round.board, sourceTileId, targetTileId);
-  const fullOrder = [...game.round.hand, ...game.round.remaining];
-  swapTileIds(fullOrder, sourceTileId, targetTileId);
+  const target = CORE_TILES.find(tile => tile.id === targetTileId);
+  if (!target) return false;
+  const fullOrder = [...game.round.hand, ...game.round.remaining].filter(tile => tile.id !== targetTileId);
   game.round.hand = fullOrder.slice(0, game.round.formalDrawCount);
   game.round.remaining = fullOrder.slice(game.round.formalDrawCount);
-  game.round.drawn.delete(sourceTileId);
+  game.round.discarded.delete(targetTileId);
   game.round.drawn.add(targetTileId);
   game.items.splice(index, 1);
   game.round.activeItemUses += 1;
-  closeTilePicker();
-  renderBoard();
-  scoreLines();
-  scoreCollections();
-  updateWaitingLines();
+  closeItemStatus();
+  applyOfficialTileEffects(target);
   updateHUD();
-  notifyScore(`${item.title}已使用`, { type: "achievement", duration: 1800 });
+  notifyScore(`${item.title}已使用，取得${target.label}`, { type: "achievement", duration: 1800 });
   return true;
 }
 
@@ -955,10 +926,7 @@ async function acquireFormalTile(tile, { suppressEvent = false } = {}) {
   await animateStackTile(tile);
   game.round.drawIndex += 1;
   if (!tile.special || suppressEvent) {
-    markBoard(tile);
-    scoreLines();
-    scoreCollections();
-    updateWaitingLines();
+    applyOfficialTileEffects(tile);
   }
   game.busy = false;
   updateHUD();
@@ -992,6 +960,13 @@ function markBoard(tile) {
   cell.classList.remove("tile-unclaimed", "tile-discarded");
   cell.classList.add("marked", "tile-acquired");
   cell.setAttribute("aria-label", `${tile.label}，已取得`);
+}
+
+function applyOfficialTileEffects(tile) {
+  markBoard(tile);
+  scoreLines();
+  scoreCollections();
+  updateWaitingLines();
 }
 
 function lineTileIds(line) { return line.indexes.map(index => game.round.board[index].id); }
@@ -1280,10 +1255,7 @@ function openEventChoice(tile) {
   game.state = GAME_STATES.EVENT_REVEAL;
   game.pendingSpecial = { tile, resolved: false, result: null };
   game.stats.eventTriggeredCount += 1;
-  markBoard(tile);
-  scoreLines();
-  scoreCollections();
-  updateWaitingLines();
+  applyOfficialTileEffects(tile);
   updateHUD();
   openModal({
     icon: tile.glyph, kicker: `${tile.label}・夜市事件牌`, title: "事件揭曉中……",
@@ -1473,7 +1445,7 @@ function rollbackRoundOutcomeStats(round) {
 
 function betConditionMet(bet) {
   const handlers = {
-    REQUIRE_TILES: () => bet.tileIds.every(isOfficiallyDrawn),
+    REQUIRE_TILES: () => bet.tileIds.filter(isOfficiallyDrawn).length >= (bet.requiredCount ?? bet.tileIds.length),
     MIN_LINES: () => game.round.roundLines >= bet.minimum,
     EVER_WAITED: () => game.round.everWaited,
     UNFINISHED_WAITING_LINE: () => [...game.round.everWaitingLines].some(lineId => !game.round.completedLines.has(lineId))

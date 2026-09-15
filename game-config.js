@@ -46,7 +46,7 @@ const MEMORY_MASTER_THEMES = Object.freeze([
 
 const PRE_ROUND_EVENT_DEFINITIONS = Object.freeze([
   Object.freeze({ id: "mystery-gift", title: "神秘禮物到來", description: "開牌局後隨機獲得一個道具。", type: "ITEM", effectKey: "DRAW_ITEM" }),
-  Object.freeze({ id: "believe-guoju", title: "相信國聚", description: "正式取得東南西北中發白全部 7 張。", type: "BET", effectKey: "REQUIRE_TILES", tileIds: ["east", "south", "west", "north", "red", "green", "white"], reward: 30, penalty: 30 }),
+  Object.freeze({ id: "believe-guoju", title: "相信國聚", description: "東南西北中發白取得其中 6 張。", type: "BET", effectKey: "REQUIRE_TILES", tileIds: ["east", "south", "west", "north", "red", "green", "white"], requiredCount: 6, reward: 30, penalty: 30 }),
   Object.freeze({ id: "chiikawa", title: "吉一卡哇", description: "正式取得一萬、一筒、一條。", type: "BET", effectKey: "REQUIRE_TILES", tileIds: ["wan-1", "tong-1", "suo-1"], reward: 15, penalty: 10 }),
   Object.freeze({ id: "three-set", title: "無三不成禮", description: "正式取得三萬、三筒、三條。", type: "BET", effectKey: "REQUIRE_TILES", tileIds: ["wan-3", "tong-3", "suo-3"], reward: 15, penalty: 10 }),
   Object.freeze({ id: "five-set", title: "五告讚", description: "正式取得五萬、五筒、五條。", type: "BET", effectKey: "REQUIRE_TILES", tileIds: ["wan-5", "tong-5", "suo-5"], reward: 15, penalty: 10 }),
@@ -71,9 +71,9 @@ const ITEM_DEFINITIONS = Object.freeze([
   Object.freeze({ id: "chance-maker", title: "嗆司Maker", type: "PASSIVE", description: "每局第一次聽牌時，額外 +5 本局分數。" }),
   Object.freeze({ id: "empty-cup", title: "喝完的飲料杯", type: "PASSIVE", description: "沒有任何效果，但會占用一格道具欄。" }),
   Object.freeze({ id: "disposable-charm", title: "免洗護身符", type: "AUTO", description: "自動擋下第一個負面局中事件，發動後消失。" }),
-  Object.freeze({ id: "pocket-green", title: "口袋中的發", type: "ACTIVE", description: "將一張已取得普通麻將換成發。", targetTileId: "green" }),
-  Object.freeze({ id: "pocket-red", title: "口袋中的中", type: "ACTIVE", description: "將一張已取得普通麻將換成中。", targetTileId: "red" }),
-  Object.freeze({ id: "pocket-white", title: "口袋中的白板", type: "ACTIVE", description: "將一張已取得普通麻將換成白。", targetTileId: "white" })
+  Object.freeze({ id: "pocket-green", title: "口袋中的發", type: "ACTIVE", description: "直接取得「發」。", targetTileId: "green" }),
+  Object.freeze({ id: "pocket-red", title: "口袋中的中", type: "ACTIVE", description: "直接取得「中」。", targetTileId: "red" }),
+  Object.freeze({ id: "pocket-white", title: "口袋中的白板", type: "ACTIVE", description: "直接取得「白板」。", targetTileId: "white" })
 ]);
 
 const FORTUNE_MODIFIERS = Object.freeze({

@@ -50,7 +50,7 @@ Phase 0 不修改 Gameplay 行為。
 - 建立三格 Item inventory、Commit 後抽取與滿格強制替換流程。
 - 加入專屬 Item Reveal，滿格時依序執行 Reveal → 強制 Replacement。
 - 導入 10 個既定 Item，並完成跨局保留與新場重置。
-- 接入嗆司Maker每局首次聽牌效果與三個口袋系列主動替換效果。
+- 接入嗆司Maker每局首次聽牌效果，以及三個口袋系列直接額外取得指定國字牌的主動效果。
 - 建立「道具 / 狀態」入口及按住「已抽牌型」即時總覽。
 - PRE_ROUND 可明確放棄場中事件，仍能獨立選擇合法槓桿，並建立 `NONE` config snapshot。
 - 籤詩局中事件機率及免洗護身符抵銷已於 Phase 1-E 完成。

@@ -8,7 +8,7 @@ MoMaJohnPlus 是由原始 [MoMaJohn](https://github.com/Kriskuo1129/MoMaJohn) �
 - Phase 1-A 已完成單一遊戲模式、15 張正式牌基準、分數用語與基礎規則轉換。
 - Phase 1-B 已完成每局 PRE_ROUND 開局準備、場中事件三選一框架、槓桿整合與一次性 Commit 流程。
 - Phase 1-C 已完成 9 個場中下注、6 個場中特殊、正式隨機三選一 Pool、14／15／16 張動態牌數及 committed round config。
-- Phase 1-D 已完成 10 個 Item、三格 Item inventory、取得／強制替換流程、嗆司Maker、口袋系列主動使用，以及按住查看牌型。
+- Phase 1-D 已完成 10 個 Item、三格 Item inventory、取得／強制替換流程、嗆司Maker、口袋系列直接額外取得指定國字牌，以及查看牌型。
 - Phase 1-E 已完成 PRE_ROUND 加權抽取、四種籤運勢與免洗護身符負面事件攔截（包含瓦斯桶爆炸、停電）。
 - Settlement & Achievement Update 已完成結構化單局分數明細、實際最終變化，以及依整場正式完成局判定的 15 個當場稱號。
 - PRE_ROUND 每局皆可主動選擇「這局不選事件」，放棄事件後仍可使用 ×1／×2／×3 槓桿。

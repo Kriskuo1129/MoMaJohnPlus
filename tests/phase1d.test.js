@@ -171,54 +171,67 @@ globalThis.phase1DTest = {
     restartCurrentRound();
     return { first, second, reset: game.round.chanceMakerTriggered };
   },
-  pocket(itemId, sourceTileId, acquiredTarget = false) {
+  pocket(itemId, acquiredTarget = false) {
     game = freshGameState("TEST");
     game.items = [itemId];
     game.round = createRound();
     game.round.board = [...GAME_TILES];
     game.round.hand = GAME_TILES.slice(0, 15);
     game.round.remaining = GAME_TILES.slice(15);
-    game.round.drawn.add(sourceTileId);
+    game.round.drawn.add("wan-1");
     const item = itemById(itemId);
     if (acquiredTarget) game.round.drawn.add(item.targetTileId);
     game.round.drawIndex = 4;
     game.state = GAME_STATES.DRAWING;
     const beforeIndex = game.round.drawIndex;
-    const originalRandom = Math.random;
-    Math.random = () => { throw new Error("Pocket replacement must not use random selection"); };
-    const used = completePocketItemUse(0, sourceTileId);
-    Math.random = originalRandom;
+    const beforeDrawn = [...game.round.drawn];
+    const used = beginPocketItemUse(0);
     const order = [...game.round.hand, ...game.round.remaining].map(tile => tile.id);
-    return { used, beforeIndex, afterIndex: game.round.drawIndex, items: [...game.items], drawn: [...game.round.drawn], order, board: game.round.board.map(tile => tile.id), target: item.targetTileId, activeItemUses: game.round.activeItemUses };
+    return { used, beforeIndex, afterIndex: game.round.drawIndex, items: [...game.items], beforeDrawn, drawn: [...game.round.drawn], order, target: item.targetTileId, activeItemUses: game.round.activeItemUses, picker: game.round.tilePicker, overlay: game.uiOverlayOpen };
   },
-  pocketSelection(itemId, drawnIds, selectedId = null) {
+  multiPocket() {
     game = freshGameState("TEST");
-    game.items = [itemId];
+    game.items = ["pocket-red", "pocket-green", "pocket-white"];
     game.round = createRound();
     game.round.board = [...GAME_TILES];
     game.round.hand = GAME_TILES.slice(0, 15);
     game.round.remaining = GAME_TILES.slice(15);
-    drawnIds.forEach(id => game.round.drawn.add(id));
-    game.round.selectedBonusTiles = [GAME_TILES.find(tile => tile.id === "tong-9")];
+    game.round.drawIndex = 4;
     game.state = GAME_STATES.DRAWING;
-    game.uiOverlayOpen = true;
-    const item = itemById(itemId);
-    const candidates = pocketReplacementCandidates(item).map(tile => tile.id);
-    const opened = beginPocketItemUse(0);
-    const modal = { body: elements.modalBody.innerHTML, title: elements.modalTitle.textContent, icon: elements.modalIcon.textContent };
-    const before = { items: [...game.items], drawn: [...game.round.drawn], order: [...game.round.hand, ...game.round.remaining].map(tile => tile.id) };
-    if (selectedId) completePocketItemUse(0, selectedId); else cancelTilePicker();
-    return { candidates, opened, modal, before, after: { items: [...game.items], drawn: [...game.round.drawn], order: [...game.round.hand, ...game.round.remaining].map(tile => tile.id), activeItemUses: game.round.activeItemUses }, target: item.targetTileId };
+    const results = [beginPocketItemUse(0), beginPocketItemUse(0), beginPocketItemUse(0)];
+    recordCompletedRoundStats();
+    const earned = evaluateAchievements(buildAchievementStats()).map(achievement => achievement.id);
+    return { results, drawIndex: game.round.drawIndex, items: [...game.items], drawn: [...game.round.drawn], order: [...game.round.hand, ...game.round.remaining].map(tile => tile.id), activeItemUses: game.round.activeItemUses, tacticsMaster: earned.includes("tacticsMaster") };
   },
-  pocketWithoutCandidate() {
+  pocketEffects(completeLine = true) {
     game = freshGameState("TEST");
     game.items = ["pocket-red"];
     game.round = createRound();
+    game.round.board = [...GAME_TILES];
+    const line = LINE_DEFINITIONS[0];
+    const targetIndex = line.indexes[completeLine ? 5 : 4];
+    const redIndex = game.round.board.findIndex(tile => tile.id === "red");
+    [game.round.board[targetIndex], game.round.board[redIndex]] = [game.round.board[redIndex], game.round.board[targetIndex]];
+    line.indexes.slice(0, completeLine ? 5 : 4).forEach(index => game.round.drawn.add(game.round.board[index].id));
+    game.round.drawn.add("green"); game.round.drawn.add("white");
     game.state = GAME_STATES.DRAWING;
-    game.uiOverlayOpen = true;
-    closeModal();
-    const opened = beginPocketItemUse(0);
-    return { opened, items: [...game.items], drawn: [...game.round.drawn], modalOpen: elements.modal.classList.contains("open"), toast: elements.toastStack.children.at(-1)?.textContent };
+    beginPocketItemUse(0);
+    return { line: game.round.completedLines.has(line.id), waited: game.round.everWaited, collection: game.round.achievements.has("dragons"), targetDrawn: isOfficiallyDrawn("red") };
+  },
+  pocketBetAndRestart() {
+    game = freshGameState("TEST"); game.items = ["pocket-red", "pocket-green", "pocket-white"]; game.round = createRound(); game.round.board = [...GAME_TILES];
+    game.round.hand = GAME_TILES.slice(0, 15); game.round.remaining = GAME_TILES.slice(15); game.round.config = { formalDrawCount: 15, leverageMultiplier: 1, finalMultiplier: 1, activeBetId: "believe-guoju" }; game.round.preRound.eventOptions = [];
+    ["east", "south", "west"].forEach(id => game.round.drawn.add(id)); game.state = GAME_STATES.DRAWING;
+    beginPocketItemUse(0); beginPocketItemUse(0); beginPocketItemUse(0);
+    const betWon = betConditionMet(PRE_ROUND_EVENT_DEFINITIONS.find(event => event.id === "believe-guoju"));
+    const beforeRestart = { items: [...game.items], uses: game.round.activeItemUses, honors: ["red", "green", "white"].every(isOfficiallyDrawn) };
+    restartCurrentRound();
+    return { betWon, beforeRestart, afterRestart: { items: [...game.items], uses: game.round.activeItemUses, honors: ["red", "green", "white"].some(isOfficiallyDrawn) } };
+  },
+  guojuBoundary(count) {
+    game = freshGameState("TEST"); game.score = 100; game.round = createRound(); game.round.config = { activeBetId: "believe-guoju" };
+    ["east", "south", "west", "north", "red", "green", "white"].slice(0, count).forEach(id => game.round.drawn.add(id));
+    const result = settleBets()[0]; return { won: result.won, points: result.points };
   },
   overview() {
     game = freshGameState("TEST");
@@ -332,49 +345,43 @@ const chance = api.chanceMaker();
 assert.equal(JSON.stringify(chance), JSON.stringify({ first: 5, second: 5, reset: false }));
 
 for (const [itemId, target] of [["pocket-green", "green"], ["pocket-red", "red"], ["pocket-white", "white"]]) {
-  const result = api.pocket(itemId, "wan-1");
+  const result = api.pocket(itemId);
   assert.equal(result.used, true);
   assert.equal(result.target, target);
   assert.equal(result.beforeIndex, result.afterIndex);
   assert.equal(JSON.stringify(result.items), "[]");
   assert.equal(result.drawn.includes(target), true);
-  assert.equal(result.drawn.includes("wan-1"), false);
-  assert.equal(result.order.length, 36);
-  assert.equal(new Set(result.order).size, 36);
-  assert.equal(new Set(result.board).size, 36);
-  assert.equal(result.order.slice(result.afterIndex).includes(target), false);
+  assert.equal(result.drawn.includes("wan-1"), true);
+  assert.equal(JSON.stringify(result.beforeDrawn), '["wan-1"]');
+  assert.equal(result.order.length, 35);
+  assert.equal(new Set(result.order).size, 35);
+  assert.equal(result.order.includes(target), false);
   assert.equal(result.activeItemUses, 1);
+  assert.equal(result.picker, null);
+  assert.equal(result.overlay, false);
 }
-assert.equal(api.pocket("pocket-green", "wan-1", true).used, false);
-assert.equal(api.pocket("pocket-green", "event-1").used, false);
+const unavailablePocket = api.pocket("pocket-green", true);
+assert.equal(unavailablePocket.used, false);
+assert.equal(JSON.stringify(unavailablePocket.items), '["pocket-green"]');
+assert.equal(unavailablePocket.activeItemUses, 0);
 
-const selectedPocket = api.pocketSelection("pocket-red", ["wan-1", "wan-5", "event-1"], "wan-5");
-assert.equal(JSON.stringify(selectedPocket.candidates), '["wan-1","wan-5"]');
-assert.equal(selectedPocket.opened, true);
-assert.equal(selectedPocket.modal.title, "口袋中的中");
-assert.equal(selectedPocket.modal.icon, "🀄");
-assert.match(selectedPocket.modal.body, /class="hand-tile revealed"[^>]*data-picker-tile-id="wan-1"/);
-assert.match(selectedPocket.modal.body, /class="hand-tile revealed"[^>]*data-picker-tile-id="wan-5"/);
-assert.doesNotMatch(selectedPocket.modal.body, /data-picker-tile-id="event-1"/);
-assert.doesNotMatch(selectedPocket.modal.body, /data-picker-tile-id="tong-9"/);
-assert.equal(selectedPocket.after.items.length, 0);
-assert.equal(selectedPocket.after.drawn.includes("wan-1"), true);
-assert.equal(selectedPocket.after.drawn.includes("wan-5"), false);
-assert.equal(selectedPocket.after.drawn.includes(selectedPocket.target), true);
-assert.equal(selectedPocket.after.order.includes("wan-5"), true);
-assert.equal(selectedPocket.after.order.slice(15).includes(selectedPocket.target), false);
+const multiPocket = api.multiPocket();
+assert.equal(JSON.stringify(multiPocket.results), "[true,true,true]");
+assert.equal(multiPocket.drawIndex, 4);
+assert.equal(JSON.stringify(multiPocket.items), "[]");
+assert.equal(["red", "green", "white"].every(id => multiPocket.drawn.includes(id)), true);
+assert.equal(["red", "green", "white"].every(id => !multiPocket.order.includes(id)), true);
+assert.equal(multiPocket.activeItemUses, 3);
+assert.equal(multiPocket.tacticsMaster, true);
 
-const cancelledPocket = api.pocketSelection("pocket-white", ["wan-1", "wan-5"]);
-assert.equal(cancelledPocket.opened, true);
-assert.equal(cancelledPocket.after.activeItemUses, 0);
-assert.equal(JSON.stringify({ items: cancelledPocket.after.items, drawn: cancelledPocket.after.drawn, order: cancelledPocket.after.order }), JSON.stringify(cancelledPocket.before));
-
-const emptyPocket = api.pocketWithoutCandidate();
-assert.equal(emptyPocket.opened, false);
-assert.equal(JSON.stringify(emptyPocket.items), '["pocket-red"]');
-assert.equal(JSON.stringify(emptyPocket.drawn), "[]");
-assert.equal(emptyPocket.modalOpen, false);
-assert.equal(emptyPocket.toast, "目前沒有可以替換的牌");
+const linePocket = api.pocketEffects(true); assert.equal(linePocket.line, true); assert.equal(linePocket.collection, true); assert.equal(linePocket.targetDrawn, true);
+const waitingPocket = api.pocketEffects(false); assert.equal(waitingPocket.waited, true); assert.equal(waitingPocket.targetDrawn, true);
+const pocketTransaction = api.pocketBetAndRestart();
+assert.equal(pocketTransaction.betWon, true); assert.equal(pocketTransaction.beforeRestart.uses, 3); assert.equal(pocketTransaction.beforeRestart.honors, true);
+assert.equal(JSON.stringify(pocketTransaction.afterRestart.items), "[]"); assert.equal(pocketTransaction.afterRestart.uses, 0); assert.equal(pocketTransaction.afterRestart.honors, false);
+assert.equal(JSON.stringify(api.guojuBoundary(5)), JSON.stringify({ won: false, points: -30 }));
+assert.equal(JSON.stringify(api.guojuBoundary(6)), JSON.stringify({ won: true, points: 30 }));
+assert.equal(JSON.stringify(api.guojuBoundary(7)), JSON.stringify({ won: true, points: 30 }));
 
 const overview = api.overview();
 assert.equal(overview.opened, true);
