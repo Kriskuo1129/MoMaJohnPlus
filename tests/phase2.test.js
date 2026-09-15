@@ -35,7 +35,7 @@ const context = vm.createContext({
   requestAnimationFrame() {}, setTimeout() {}, clearTimeout() {}, setInterval() {}, clearInterval() {}, Math, Object, Array, Set, Map, String, Number, Boolean
 });
 const root = path.resolve(__dirname, "..");
-const source = `${fs.readFileSync(path.join(root, "game-config.js"), "utf8")}\n${fs.readFileSync(path.join(root, "game.js"), "utf8")}\n
+const source = `${fs.readFileSync(path.join(root, "minigames", "memory-master.js"), "utf8")}\n${fs.readFileSync(path.join(root, "game-config.js"), "utf8")}\n${fs.readFileSync(path.join(root, "game.js"), "utf8")}\n
 animateStackTile = async () => {};
 let phase2AcquireCount = 0;
 let phase2RandomTileCount = 0;

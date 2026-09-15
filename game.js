@@ -6,10 +6,6 @@ const GAME_STATES = Object.freeze({
 });
 
 const RULES = Object.freeze({ initialAttempts: 6, maxAttempts: 6, bonusChoices: 3, baseFormalDrawCount: 15 });
-const MEMORY_MASTER_REVEAL_SECONDS = 5;
-const MEMORY_MASTER_CARD_COUNT = 4;
-const MEMORY_MASTER_WRONG_REVEAL_DELAY_MS = 1000;
-const MEMORY_MASTER_RESULT_DELAY_MS = 800;
 const PLAYER_NAME_STORAGE_KEY = "momajohnPlayerName";
 const NUMERALS = "一二三四五六七八九";
 const SUIT_NAMES = Object.freeze({ wan: "萬子", tong: "筒子", suo: "條子" });
@@ -700,120 +696,28 @@ function startMiniGame() {
   return true;
 }
 
-function shuffleWithRandom(items, random) {
-  const copy = [...items];
-  for (let index = copy.length - 1; index > 0; index -= 1) {
-    const swapIndex = Math.floor(random() * (index + 1));
-    [copy[index], copy[swapIndex]] = [copy[swapIndex], copy[index]];
-  }
-  return copy;
-}
-
-function createMemoryMasterRound(random = Math.random) {
-  const theme = MEMORY_MASTER_THEMES[Math.floor(random() * MEMORY_MASTER_THEMES.length)] ?? MEMORY_MASTER_THEMES[0];
-  const language = random() < 0.5 ? "zh" : "en";
-  const samplePool = [...theme.items];
-  const sampled = [];
-  while (sampled.length < MEMORY_MASTER_CARD_COUNT && samplePool.length) sampled.push(samplePool.splice(Math.floor(random() * samplePool.length), 1)[0]);
-  const items = shuffleWithRandom(sampled, random);
-  const target = items[Math.floor(random() * items.length)] ?? items[0];
-  return { themeId: theme.id, themeName: theme.name[language], language, items, targetItemId: target.id, phase: "REVEAL", selectedIndex: null, resolved: false, correctAnswerRevealed: false, countdown: MEMORY_MASTER_REVEAL_SECONDS, countdownTimer: null, correctRevealTimer: null, resultTimer: null };
-}
-
 function startMemoryMaster(random = Math.random) {
   if (game.state !== GAME_STATES.MINIGAME_ACTIVE || game.round.miniGame.memory) return false;
-  const memory = createMemoryMasterRound(random);
-  game.round.miniGame.memory = memory;
-  renderMemoryMaster();
-  requestAnimationFrame(() => startMemoryMasterCountdown(memory));
-  return true;
-}
-
-function memoryMasterItemLabel(memory, item) {
-  return item.name[memory.language];
-}
-
-function renderMemoryMaster() {
-  const memory = game.round?.miniGame.memory;
-  if (!memory) return false;
-  const target = memory.items.find(item => item.id === memory.targetItemId);
-  const isReveal = memory.phase === "REVEAL";
-  const isQuestion = memory.phase === "QUESTION";
-  const theme = memory.language === "zh" ? `本次主題：${memory.themeName}` : `Theme: ${memory.themeName}`;
-  const revealPrompt = memory.language === "zh" ? `記住它們的位置！ ${memory.countdown}` : `Remember their positions! ${memory.countdown}`;
-  const questionPrompt = memory.language === "zh" ? "請翻出這張牌在哪" : "Find this card";
-  const prompt = isReveal
-    ? `<p class="memory-master-prompt">${revealPrompt}</p>`
-    : `<div class="memory-question"><p class="memory-question-prompt">${questionPrompt}</p><div class="memory-question-emoji">${target.emoji}</div><div class="memory-question-name">${memoryMasterItemLabel(memory, target)}</div></div>`;
-  const cards = memory.items.map((item, index) => {
-    const selected = memory.selectedIndex === index;
-    const isTarget = item.id === memory.targetItemId;
-    const showTarget = memory.phase === "RESOLVING" && isTarget && (selected || memory.correctAnswerRevealed);
-    const showFace = isReveal || (memory.phase === "RESOLVING" && selected) || showTarget;
-    const resultClass = memory.phase === "RESOLVING" ? selected ? (isTarget ? " correct" : " wrong") : showTarget ? " target" : "" : "";
-    const content = showFace ? `<span>${item.emoji}</span><b>${memoryMasterItemLabel(memory, item)}</b>` : "<span class=\"memory-card-back\">？</span>";
-    const label = showFace ? memoryMasterItemLabel(memory, item) : `${memory.language === "zh" ? "蓋牌" : "Covered card"} ${index + 1}`;
-    return `<button type="button" class="memory-master-card${showFace ? " face-up" : " covered"}${resultClass}" data-memory-index="${index}" aria-label="${label}"${isQuestion ? "" : " disabled"}>${content}</button>`;
-  }).join("");
-  openModal({ icon: "🧠", kicker: theme, title: "記憶大師", body: `<section class="memory-master">${prompt}<div class="memory-master-grid">${cards}</div></section>`, actions: [] });
-  elements.modalBody.querySelectorAll("[data-memory-index]").forEach(button => button.addEventListener("click", () => submitMemoryMasterGuess(Number(button.dataset.memoryIndex)), { once: true }));
-  return true;
-}
-
-function startMemoryMasterCountdown(memory) {
-  if (game.round?.miniGame.memory !== memory || memory.phase !== "REVEAL" || memory.countdownTimer) return false;
-  memory.countdownTimer = setInterval(() => {
-    if (game.round?.miniGame.memory !== memory || memory.phase !== "REVEAL") return clearMemoryMasterTimer(memory, "countdownTimer", clearInterval);
-    memory.countdown -= 1;
-    if (memory.countdown <= 0) {
-      clearMemoryMasterTimer(memory, "countdownTimer", clearInterval);
-      memory.phase = "QUESTION";
+  openModal({ icon: "🧠", kicker: "", title: "記憶大師", body: '<div class="memory-master-host" data-memory-master-root></div>', actions: [] });
+  const container = elements.modalBody.querySelector("[data-memory-master-root]");
+  const controller = MemoryMaster.start({
+    container,
+    random,
+    onComplete(result) {
+      if (game.round?.miniGame.memory !== controller) return;
+      game.round.miniGame.memory = null;
+      resolveMiniGameChallenge(result);
     }
-    renderMemoryMaster();
-  }, 1000);
+  });
+  game.round.miniGame.memory = controller;
+  elements.modalKicker.textContent = controller.round.language === "zh" ? `本次主題：${controller.round.themeName}` : `Theme: ${controller.round.themeName}`;
   return true;
-}
-
-function clearMemoryMasterTimer(memory, key, clearTimer) {
-  if (memory?.[key] !== null) clearTimer(memory[key]);
-  if (memory) memory[key] = null;
-}
-
-function submitMemoryMasterGuess(index) {
-  const memory = game.round?.miniGame.memory;
-  if (!memory || memory.phase !== "QUESTION" || memory.resolved || !memory.items[index]) return false;
-  memory.phase = "RESOLVING";
-  memory.selectedIndex = index;
-  memory.resolved = true;
-  const success = memory.items[index].id === memory.targetItemId;
-  renderMemoryMaster();
-  if (success) {
-    memory.resultTimer = setTimeout(() => finishMemoryMaster(true, memory), MEMORY_MASTER_RESULT_DELAY_MS);
-  } else {
-    memory.correctRevealTimer = setTimeout(() => {
-      if (game.round?.miniGame.memory !== memory || memory.phase !== "RESOLVING") return;
-      memory.correctRevealTimer = null;
-      memory.correctAnswerRevealed = true;
-      renderMemoryMaster();
-      memory.resultTimer = setTimeout(() => finishMemoryMaster(false, memory), MEMORY_MASTER_RESULT_DELAY_MS);
-    }, MEMORY_MASTER_WRONG_REVEAL_DELAY_MS);
-  }
-  return success;
-}
-
-function finishMemoryMaster(success, memory) {
-  if (game.round?.miniGame.memory !== memory || memory.phase !== "RESOLVING") return false;
-  memory.phase = "COMPLETE";
-  clearMemoryMasterState();
-  return resolveMiniGameChallenge({ success });
 }
 
 function clearMemoryMasterState() {
-  const memory = game.round?.miniGame.memory;
-  if (!memory) return;
-  clearMemoryMasterTimer(memory, "countdownTimer", clearInterval);
-  clearMemoryMasterTimer(memory, "correctRevealTimer", clearTimeout);
-  clearMemoryMasterTimer(memory, "resultTimer", clearTimeout);
+  const controller = game.round?.miniGame.memory;
+  if (!controller) return;
+  controller.destroy();
   game.round.miniGame.memory = null;
 }
 

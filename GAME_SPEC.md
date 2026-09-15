@@ -86,6 +86,8 @@ Phase 2 在玩家準備取得正式第 13 張時顯示不可略過關閉的 Oppo
 
 Phase 3-A「記憶大師」每次等權隨機選擇水果、動物、食物、運動之一，再以 50／50 選擇中文或 English；從該主題 12 個候選抽取 4 個不同項目並洗牌。牌面完整顯示 5 秒倒數後全部蓋起，題目以 Instruction、大型 Emoji 與在地化名稱呈現，玩家只猜一次；答對回傳 SUCCESS，答錯會先揭示所選牌、1 秒後再揭示正確牌，短暫停留後回傳 FAILURE。所有 Setup RNG 可注入測試，倒數、延遲揭牌與結果 Timer 均納入 Mini-game lifecycle cleanup。
 
+正式小遊戲開發採 `Module + Standalone Playground + Main Integration`：Module 是玩法、畫面與 lifecycle 的唯一正式來源，Standalone HTML 只提供開始、結果及再玩一次的 Development／Playtest Shell，MoMaJohnPlus 則是接收 `{ success: boolean }` 並銜接第 13 張流程的 Integration Shell。新小遊戲應先以同一 Module 在 Standalone 完成 Playtest，再註冊並接入主程式；不得複製第二套玩法實作。
+
 ## 9. Item 池
 
 Item 欄最多 3 格。Item 可以是持續型、自動消耗型或主動消耗型。Item 滿 3 格後取得新 Item 時，必須替換現有一件，不能拒收；Item 消耗後消失並空出欄位。

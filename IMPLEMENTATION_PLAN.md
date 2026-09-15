@@ -82,6 +82,8 @@ Phase 3-A Completed：
 - 題目採 Instruction、大型 Emoji 與在地化名稱；猜錯先揭所選牌，1 秒後才揭正解，再依既有 Contract 回傳 FAILURE。
 - 玩家蓋牌後只猜一次；正確／錯誤只回傳 `{ success }`，由 Phase 2 Main Game Contract 接續 Shared Tile Picker 或 Failure Result Card。
 - 集中可注入 RNG、一次判定鎖及可清除 countdown/result timers；彈珠台與棒球九宮格仍保持 Placeholder。
+- 將記憶大師抽成 `minigames/memory-master.js` 正式共用 Module，並由主程式與 `memory-master.html` Standalone Playground 共用；Module 是玩法唯一來源，Standalone 是 Development／Playtest Shell，MoMaJohnPlus 是 Integration Shell。
+- 後續新小遊戲沿用 `Module + Standalone Playground + Main Integration`：先在 Standalone 完成玩法與節奏 Playtest，再接入 Registry 與 Phase 2 Contract，不建立大型抽象框架。
 
 Settlement & Achievement Update Completed：
 

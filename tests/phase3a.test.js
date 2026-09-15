@@ -11,13 +11,13 @@ class FakeClassList {
   toggle(name, force) { const enabled = force ?? !this.values.has(name); if (enabled) this.values.add(name); else this.values.delete(name); return enabled; }
 }
 class FakeElement {
-  constructor() { this.classList = new FakeClassList(); this.style = { setProperty() {} }; this.dataset = {}; this.children = []; this.textContent = ""; this.disabled = false; this._innerHTML = ""; }
+  constructor() { this.classList = new FakeClassList(); this.style = { setProperty() {} }; this.dataset = {}; this.children = []; this.textContent = ""; this.disabled = false; this._innerHTML = ""; this.queries = new Map(); }
   set innerHTML(value) { this._innerHTML = value; }
   get innerHTML() { return this._innerHTML; }
   addEventListener() {}
   append(child) { this.children.push(child); }
   replaceChildren(...children) { this.children = children; }
-  querySelector() { return new FakeElement(); }
+  querySelector(selector) { if (!this.queries.has(selector)) this.queries.set(selector, new FakeElement()); return this.queries.get(selector); }
   querySelectorAll() { return []; }
   closest() { return this; }
   setAttribute() {}
@@ -44,16 +44,17 @@ const context = vm.createContext({
   Math, Object, Array, Set, Map, String, Number, Boolean
 });
 const root = path.resolve(__dirname, "..");
-const source = `${fs.readFileSync(path.join(root, "game-config.js"), "utf8")}\n${fs.readFileSync(path.join(root, "game.js"), "utf8")}\n
+const source = `${fs.readFileSync(path.join(root, "minigames", "memory-master.js"), "utf8")}\n${fs.readFileSync(path.join(root, "game-config.js"), "utf8")}\n${fs.readFileSync(path.join(root, "game.js"), "utf8")}\n
 animateStackTile = async () => {};
 let phase3ResolveCount = 0;
 const phase3OriginalResolve = resolveMiniGameChallenge;
 resolveMiniGameChallenge = result => { phase3ResolveCount += 1; return phase3OriginalResolve(result); };
 globalThis.phase3aTest = {
-  themes: MEMORY_MASTER_THEMES,
+  themes: MemoryMaster.themes,
   definitions: MINIGAME_DEFINITIONS,
-  cardCount: MEMORY_MASTER_CARD_COUNT,
-  create(values) { let index = 0; return createMemoryMasterRound(() => values[index++ % values.length]); },
+  cardCount: MemoryMaster.CARD_COUNT,
+  revealSeconds: MemoryMaster.REVEAL_SECONDS,
+  create(values) { let index = 0; return MemoryMaster.createRound(() => values[index++ % values.length]); },
   setup(values = [0]) {
     game = freshGameState("TEST"); game.round = createRound(15, []); game.round.committed = true; game.round.started = true;
     game.round.config = { formalDrawCount: 15, forcedMiniGameId: null, leverageMultiplier: 1, finalMultiplier: 1, activeBetId: null };
@@ -61,17 +62,17 @@ globalThis.phase3aTest = {
     intervals.clear(); timeouts.clear(); animationFrames.length = 0; phase3ResolveCount = 0; fakeClock.now = 0;
     let index = 0; startMemoryMaster(() => values[index++ % values.length]);
     animationFrames.splice(0).forEach(callback => callback());
-    return game.round.miniGame.memory;
+    return game.round.miniGame.memory.round;
   },
-  tickCountdown(times = 1) { for (let count = 0; count < times; count += 1) [...intervals.values()].forEach(callback => callback()); return game.round.miniGame.memory?.phase; },
-  guess(index) { const result = submitMemoryMasterGuess(index); return { result, phase: game.round.miniGame.memory?.phase, selected: game.round.miniGame.memory?.selectedIndex, html: document.querySelector("#modal-body").innerHTML, pendingResults: timeouts.size }; },
-  advance(ms) { fakeClock.now += ms; let next; do { next = [...timeouts].find(([, timer]) => timer.dueAt <= fakeClock.now); if (next) { timeouts.delete(next[0]); next[1].callback(); } } while (next); return { html: document.querySelector("#modal-body").innerHTML, timers: timeouts.size, resolves: phase3ResolveCount }; },
+  tickCountdown(times = 1) { for (let count = 0; count < times; count += 1) [...intervals.values()].forEach(callback => callback()); return game.round.miniGame.memory?.round.phase; },
+  guess(index) { const controller = game.round.miniGame.memory; const result = controller?.guess(index) ?? false; return { result, phase: controller?.round.phase, selected: controller?.round.selectedIndex, html: document.querySelector("#modal-body").querySelector("[data-memory-master-root]").innerHTML, pendingResults: timeouts.size }; },
+  advance(ms) { fakeClock.now += ms; let next; do { next = [...timeouts].find(([, timer]) => timer.dueAt <= fakeClock.now); if (next) { timeouts.delete(next[0]); next[1].callback(); } } while (next); return { html: document.querySelector("#modal-body").querySelector("[data-memory-master-root]").innerHTML, timers: timeouts.size, resolves: phase3ResolveCount }; },
   snapshot() { return { state: game.state, result: game.round.miniGame.challengeResult, picker: game.round.tilePicker, resolves: phase3ResolveCount }; },
   finishResult() { this.advance(10000); return { state: game.state, result: game.round.miniGame.challengeResult, picker: game.round.tilePicker, resolves: phase3ResolveCount }; },
-  html() { return document.querySelector("#modal-body").innerHTML; },
+  html() { return document.querySelector("#modal-body").querySelector("[data-memory-master-root]").innerHTML; },
   cleanupDuringReveal() { const memory = this.setup([0]); const callback = [...intervals.values()][0]; clearMiniGameLifecycle(); callback?.(); return { memory: game.round.miniGame.memory, timers: intervals.size, resolves: phase3ResolveCount }; },
-  cleanupDuringResult() { const memory = this.setup([0]); this.tickCountdown(5); const targetIndex = memory.items.findIndex(item => item.id === memory.targetItemId); submitMemoryMasterGuess(targetIndex); const callback = [...timeouts.values()][0]?.callback; clearMiniGameLifecycle(); callback?.(); return { memory: game.round.miniGame.memory, timers: timeouts.size, resolves: phase3ResolveCount }; },
-  cleanupDuringWrongDelay() { const memory = this.setup([0]); this.tickCountdown(5); const targetIndex = memory.items.findIndex(item => item.id === memory.targetItemId); submitMemoryMasterGuess((targetIndex + 1) % MEMORY_MASTER_CARD_COUNT); const callback = [...timeouts.values()][0]?.callback; clearMiniGameLifecycle(); callback?.(); return { memory: game.round.miniGame.memory, timers: timeouts.size, resolves: phase3ResolveCount }; },
+  cleanupDuringResult() { const memory = this.setup([0]); this.tickCountdown(5); const targetIndex = memory.items.findIndex(item => item.id === memory.targetItemId); game.round.miniGame.memory.guess(targetIndex); const callback = [...timeouts.values()][0]?.callback; clearMiniGameLifecycle(); callback?.(); return { memory: game.round.miniGame.memory, timers: timeouts.size, resolves: phase3ResolveCount }; },
+  cleanupDuringWrongDelay() { const memory = this.setup([0]); this.tickCountdown(5); const targetIndex = memory.items.findIndex(item => item.id === memory.targetItemId); game.round.miniGame.memory.guess((targetIndex + 1) % MemoryMaster.CARD_COUNT); const callback = [...timeouts.values()][0]?.callback; clearMiniGameLifecycle(); callback?.(); return { memory: game.round.miniGame.memory, timers: timeouts.size, resolves: phase3ResolveCount }; },
   direct() { game = freshGameState("TEST"); game.round = createRound(15, []); game.round.committed = true; game.round.started = true; game.round.config = { formalDrawCount: 15, forcedMiniGameId: "memoryMaster" }; game.round.drawIndex = 12; game.state = GAME_STATES.DRAWING; openMiniGameOffer(); const before = game.round.miniGame.memory; return Promise.resolve(directDrawMiniGameTile()).then(() => ({ before, after: game.round.miniGame.memory, drawIndex: game.round.drawIndex, result: game.round.miniGame.challengeResult })); }
 };`;
 vm.runInContext(source, context);
@@ -89,6 +90,7 @@ const api = context.phase3aTest;
   const first = api.create(deterministicValues); const second = api.create(deterministicValues);
   assert.deepEqual(JSON.parse(JSON.stringify(first)), JSON.parse(JSON.stringify(second)));
   assert.equal(api.cardCount, 4);
+  assert.equal(api.revealSeconds, 5);
   assert.equal(first.items.length, api.cardCount); assert.equal(new Set(first.items.map(item => item.id)).size, api.cardCount); assert.ok(first.items.some(item => item.id === first.targetItemId));
   for (const position of [0, 0.25, 0.5, 0.99]) assert.ok(api.create([position, 0]).themeId);
   assert.equal(api.create([0, 0.1]).language, "zh"); assert.equal(api.create([0, 0.9]).language, "en");

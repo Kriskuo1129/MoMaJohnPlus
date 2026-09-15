@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>記憶大師 Playground</title>
+  <link rel="stylesheet" href="memory-master.css">
+</head>
+<body class="memory-master-playground">
+  <main class="memory-master-playground-shell">
+    <h1>記憶大師</h1>
+    <p id="playground-meta" class="memory-master-playground-meta">Standalone Playtest Playground</p>
+    <div id="memory-master-stage" class="memory-master-playground-stage"></div>
+    <p id="playground-result" class="memory-master-playground-result" aria-live="polite"></p>
+    <button id="playground-action" type="button">開始</button>
+  </main>
+  <script src="memory-master.js"></script>
+  <script>
+    const stage = document.querySelector("#memory-master-stage");
+    const meta = document.querySelector("#playground-meta");
+    const result = document.querySelector("#playground-result");
+    const action = document.querySelector("#playground-action");
+    let controller = null;
+
+    function startPlaygroundRound() {
+      controller?.destroy();
+      result.textContent = "";
+      action.hidden = true;
+      controller = MemoryMaster.start({
+        container: stage,
+        onComplete(outcome) {
+          result.textContent = outcome.success ? "SUCCESS" : "FAILURE";
+          action.textContent = "再玩一次";
+          action.hidden = false;
+        }
+      });
+      const language = controller.round.language;
+      meta.textContent = language === "zh" ? `本次主題：${controller.round.themeName}` : `Theme: ${controller.round.themeName}`;
+    }
+
+    action.addEventListener("click", startPlaygroundRound);
+  </script>
+</body>
+</html>
