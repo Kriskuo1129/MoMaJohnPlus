@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1,maximum-scale=1,user-scalable=no">
+  <title>彈珠台 Playground</title>
+  <link rel="stylesheet" href="pajur.css">
+</head>
+<body class="pajur-page">
+  <main class="pajur-shell">
+    <h1>彈珠台</h1>
+    <div id="pajur-stage" class="pajur-stage"></div>
+    <footer class="pajur-footer">
+      <p id="pajur-result" class="pajur-result" aria-live="polite"></p>
+      <button id="pajur-action" class="pajur-action" type="button" hidden>再玩一次</button>
+    </footer>
+  </main>
+  <script src="pajur.js"></script>
+  <script>
+    const stage = document.querySelector("#pajur-stage");
+    const result = document.querySelector("#pajur-result");
+    const action = document.querySelector("#pajur-action");
+    let controller = null;
+
+    function startRound() {
+      controller?.destroy();
+      result.textContent = "";
+      action.hidden = true;
+      controller = PaJuR.start({
+        container: stage,
+        onComplete(outcome) {
+          result.textContent = outcome.success ? "挑戰成功" : "挑戰失敗";
+          action.hidden = false;
+        }
+      });
+    }
+
+    action.addEventListener("click", startRound);
+    startRound();
+  </script>
+</body>
+</html>
