@@ -1151,7 +1151,7 @@ function selectBonusTile(event) {
     if (hit) {
       button.classList.add("bonus-hit", "bonus-success-hit");
       elements.bonusModal.classList.add("bonus-success-state");
-      elements.bonusResult.innerHTML = `<strong>命中！補牌成功！</strong><br>${tile.label}`;
+      elements.bonusResult.innerHTML = "<strong>補牌成功！獲得 +1 次！</strong>";
       elements.bonusInstruction.textContent = "已命中聽牌，補牌立即結束";
     }
     setTimeout(resolveBonusDraw, hit ? 300 : 450);
@@ -1173,10 +1173,9 @@ function resolveBonusDraw() {
     elements.bonusGrid.querySelector(`[data-index="${index}"]`)?.classList.add("bonus-hit");
   });
   updateHUD();
-  const hitLabel = hits.map(tile => tile.label).join("、");
   elements.bonusResult.innerHTML = success
-    ? `<strong>${hits.length > 1 ? "雙重命中！" : "補牌成功！"}</strong><br>你摸中了：${hitLabel}<br>${game.round.bonusAttemptGain ? "獲得 +1 次！" : "剩餘次數已達上限 6 次"}`
-    : `<strong>補牌失敗，差一點！</strong><br>你需要的是：${[...game.round.bonusMissing].map(id => GAME_TILES.find(tile => tile.id === id)?.label).join("、")}`;
+    ? "<strong>補牌成功！獲得 +1 次！</strong>"
+    : "<strong>補牌失敗，差一點！</strong>";
   elements.message.textContent = success ? "補牌成功！額外獲得 1 次！" : "補牌失敗，差一點！";
   notifyScore(success ? "補牌成功！額外獲得 1 次！" : "補牌失敗，差一點！", true);
   setTimeout(() => { closeBonusModal(); endRound(true, success); }, 1500);

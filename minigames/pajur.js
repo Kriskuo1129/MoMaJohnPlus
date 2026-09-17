@@ -333,9 +333,6 @@
         ctx.shadowBlur = 14;
         ctx.fill();
         ctx.shadowBlur = 0;
-        ctx.fillStyle = "#160d18";
-        ctx.font = "900 17px system-ui";
-        ctx.fillText(slot.isGreen ? "G" : "R", centerX, 940);
       });
 
       ctx.beginPath();
