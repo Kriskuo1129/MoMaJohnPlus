@@ -12,11 +12,11 @@ const SCORE_CONFIG = Object.freeze({
   // 花色數值是「該門目前總獎勵值」，不是每個 milestone 的額外加分。
   suit: Object.freeze({ five: 5, seven: 9, nine: 15 }),
   honor: Object.freeze({ fourWinds: 5, threeDragons: 5 }),
-  special: Object.freeze({ earlyWaiting: 5, lastTileFirstLine: 5 })
+  special: Object.freeze({ earlyWaiting: 100, lastTileFirstLine: 5 })
 });
 
 const MINIGAME_DEFINITIONS = Object.freeze({
-  pachinko: Object.freeze({ id: "pachinko", name: "彈珠台", enabled: true }),
+  pachinko: Object.freeze({ id: "pachinko", name: "彈珠台", enabled: true, implementation: "PAJUR" }),
   baseball9: Object.freeze({ id: "baseball9", name: "棒球九宮格", enabled: true }),
   memoryMaster: Object.freeze({ id: "memoryMaster", name: "記憶大師", enabled: true, implementation: "MEMORY_MASTER" })
 });

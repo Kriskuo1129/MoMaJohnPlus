@@ -26,7 +26,7 @@ const GAME_TILES = [...CORE_TILES,
 
 const elements = Object.fromEntries([
   "board", "draw-stack", "total-score", "round-score", "rounds-display", "player-display",
-  "player-name-input", "player-name-error", "help-button", "main-menu-button", "start-screen", "game-shell", "play-area",
+  "player-name-input", "player-name-error", "options-button", "start-screen", "game-shell", "play-area",
   "item-status-button", "tile-peek-button", "tile-overview-overlay", "tile-overview-grid", "tile-overview-close",
   "pre-round-panel", "pre-round-event-options", "pre-round-skip-button", "pre-round-leverage-options", "pre-round-error", "start-round-button",
   "final-waiting-overlay", "final-waiting-title", "final-waiting-missing",
@@ -94,7 +94,7 @@ function createRound(formalDrawCount = RULES.baseFormalDrawCount, eventOptions =
     preRound: { eventOptions, eventSelectionType: "UNSELECTED", selectedEventId: null, selectedLeverage: 1 }, config: null, committed: false,
     completedLines: new Set(), activeWaiting: new Set(), announcedWaiting: new Set(), everWaitingLines: new Set(), achievements: new Set(),
     rawPoints: 0, roundScore: 0, roundLines: 0, roundMultiplier: 1, finalMultiplier: 1, leverageConfigured: false, betSettled: false, betResult: null, everWaited: false, waitingAnnouncements: 0, chanceMakerTriggered: false, pendingItemId: null, itemRevealConfirmed: false, rpsResult: null,
-    miniGame: { offered: false, completed: false, selectedId: null, challengeResult: null, challengeResolved: false, failureDrawStarted: false, memory: null }, tilePicker: null,
+    miniGame: { offered: false, completed: false, selectedId: null, challengeResult: null, challengeResolved: false, failureDrawStarted: false, memory: null, pajur: null }, tilePicker: null,
     pointsSettled: false, multiplierPoints: 0, actualMultiplierPoints: 0, betNetPoints: 0, finalRoundChange: 0, scoreBeforeSettlement: 0, scoreBreakdown: [], activeItemUses: 0, completedStatsRecorded: false, eventAttemptDelta: 0, eventAddedAttempts: 0,
     bonusMissing: new Set(), bonusCandidates: [], selectedBonusTiles: [], bonusResolved: false, bonusPendingStarted: false, bonusAttemptGain: 0
   };
@@ -688,6 +688,7 @@ function startMiniGame() {
   if (!definition?.enabled) return directDrawMiniGameTile();
   game.state = GAME_STATES.MINIGAME_ACTIVE;
   if (definition.implementation === "MEMORY_MASTER") return startMemoryMaster();
+  if (definition.implementation === "PAJUR") return startPaJuR();
   openModal({
     icon: "🎮", kicker: "", title: definition.name,
     body: `<article class="minigame-placeholder"><p>小遊戲施工中！</p><span>這次先模擬挑戰結果。</span></article>`,
@@ -719,6 +720,31 @@ function clearMemoryMasterState() {
   if (!controller) return;
   controller.destroy();
   game.round.miniGame.memory = null;
+}
+
+function startPaJuR(random = Math.random) {
+  if (game.state !== GAME_STATES.MINIGAME_ACTIVE || game.round.miniGame.pajur) return false;
+  openModal({ icon: "🎯", kicker: "", title: "彈珠台", body: '<div class="pajur-host" data-pajur-root></div>', actions: [] });
+  const container = elements.modalBody.querySelector("[data-pajur-root]");
+  const controller = PaJuR.start({
+    container,
+    random,
+    onComplete(result) {
+      if (game.round?.miniGame.pajur !== controller) return;
+      controller.destroy();
+      game.round.miniGame.pajur = null;
+      resolveMiniGameChallenge(result);
+    }
+  });
+  game.round.miniGame.pajur = controller;
+  return true;
+}
+
+function clearPaJuRState() {
+  const controller = game.round?.miniGame.pajur;
+  if (!controller) return;
+  controller.destroy();
+  game.round.miniGame.pajur = null;
 }
 
 function runMiniGamePlaceholder(random = Math.random) {
@@ -811,6 +837,7 @@ async function completeMiniGameFormalDraw(selected, acquireOptions = {}) {
 function clearMiniGameLifecycle() {
   if (!game.round?.miniGame) return;
   clearMemoryMasterState();
+  clearPaJuRState();
   game.round.tilePicker = null;
   if ([GAME_STATES.MINIGAME_OFFER, GAME_STATES.MINIGAME_ACTIVE, GAME_STATES.MINIGAME_REWARD].includes(game.state)) game.round.miniGame.completed = true;
 }
@@ -1559,10 +1586,9 @@ function updateHUD() {
   elements.roundScore.classList.add(getRoundPointColorClass(displayedRoundPoints));
   elements.playerDisplay.textContent = game.playerName;
   const uiLocked = game.busy || game.uiOverlayOpen;
-  elements.helpButton.disabled = uiLocked || game.state !== GAME_STATES.DRAWING;
+  elements.optionsButton.disabled = uiLocked || game.state !== GAME_STATES.DRAWING;
   elements.itemStatusButton.disabled = uiLocked || game.state !== GAME_STATES.DRAWING;
   elements.tilePeekButton.disabled = uiLocked || game.state !== GAME_STATES.DRAWING;
-  elements.mainMenuButton.disabled = uiLocked || ![GAME_STATES.PRE_ROUND, GAME_STATES.DRAWING].includes(game.state);
   const playArea = elements.board.closest(".play-area");
   [1, 2, 3, 4, 6].forEach(value => playArea.classList.toggle(`board-multiplier-${value}`, multiplier === value));
   updateDrawStackUI();
@@ -1598,7 +1624,7 @@ function openModal({ icon, kicker, title, body, actions }) {
   elements.modalKicker.textContent = kicker;
   elements.modalTitle.textContent = title;
   elements.modalBody.innerHTML = body;
-  elements.modal.querySelector(".modal-card").classList.toggle("modal-card-wide", /betting-panel|report-grid|event-guide|memory-master/.test(body));
+  elements.modal.querySelector(".modal-card").classList.toggle("modal-card-wide", /betting-panel|report-grid|event-guide|memory-master|pajur-host/.test(body));
   elements.modal.classList.toggle("game-over-modal", /game-over-report/.test(body));
   renderModalActions(actions);
   elements.modal.classList.add("open");
@@ -1636,18 +1662,64 @@ function buildScoringGuideContent() {
   return `<section class="help-section"><h3>分數獲得方式</h3><div class="rules-list scoring-guide"><p><b>玩法</b><span>${gameRule}</span></p><p><b>倍率</b><span>本局分數依倍率即時顯示</span></p><p><b>連線</b><span>第 1 條 +30 分<br>第 2 條 +60 分<br>第 3 條起每條 +90 分</span></p><p><b>牌型</b><span>萬／筒／條：5 張 +${SCORE_CONFIG.suit.five}、7 張累計 +${SCORE_CONFIG.suit.seven}、9 張累計 +${SCORE_CONFIG.suit.nine}<br>四風 +${SCORE_CONFIG.honor.fourWinds}／三元 +${SCORE_CONFIG.honor.threeDragons}</span></p><p><b>特殊成就</b><span>天聽 +${SCORE_CONFIG.special.earlyWaiting}<br>海底撈月 +${SCORE_CONFIG.special.lastTileFirstLine}</span></p></div></section>`;
 }
 
-function openHelp() {
-  if (game.state !== GAME_STATES.DRAWING || game.busy || game.uiOverlayOpen) return;
-  game.uiOverlayOpen = true;
+function showHelp(closeAction) {
   const enabledEvents = EVENT_DEFINITIONS.filter(event => event.enabled);
   const totalWeight = enabledEvents.reduce((sum, event) => sum + event.weight, 0);
   const eventContent = `<section class="help-section"><h3>事件一覽</h3><div class="event-guide">${buildEventGuideSection("一般事件", enabledEvents.filter(event => event.category === "NORMAL"), totalWeight)}${buildEventGuideSection("特殊事件", enabledEvents.filter(event => event.category === "SPECIAL"), totalWeight)}</div></section>`;
   openModal({
     icon: "說", kicker: "遊戲說明", title: "說明",
     body: `<div class="help-guide">${buildScoringGuideContent()}${eventContent}</div>`,
-    actions: [{ label: "關閉", action: closeInfoModal }]
+    actions: [{ label: closeAction === returnToOptions ? "返回" : "關閉", action: closeAction }]
   });
   elements.modal.classList.add("status-sheet", "help-sheet");
+}
+
+function openHelp() {
+  if (game.state !== GAME_STATES.DRAWING || game.busy || game.uiOverlayOpen) return;
+  game.uiOverlayOpen = true;
+  showHelp(closeInfoModal);
+}
+
+function showOptions() {
+  openModal({
+    icon: "⚙", kicker: "", title: "選項", body: "",
+    actions: [
+      { label: "說明", className: "secondary", action: openHelpFromOptions },
+      { label: "回主選單", className: "secondary", action: requestMainMenuFromOptions },
+      { label: "關閉", action: closeOptions }
+    ]
+  });
+  elements.modal.classList.add("options-sheet");
+}
+
+function openOptions() {
+  if (game.state !== GAME_STATES.DRAWING || game.busy || game.uiOverlayOpen) return;
+  game.uiOverlayOpen = true;
+  showOptions();
+  updateHUD();
+}
+
+function closeOptions() {
+  game.uiOverlayOpen = false;
+  closeModal();
+  updateHUD();
+}
+
+function openHelpFromOptions() {
+  closeModal();
+  showHelp(returnToOptions);
+}
+
+function returnToOptions() {
+  closeModal();
+  showOptions();
+}
+
+function requestMainMenuFromOptions() {
+  game.uiOverlayOpen = false;
+  closeModal();
+  requestMainMenu();
+  updateHUD();
 }
 
 function openRoundStatus() {
@@ -1698,7 +1770,7 @@ function closeEventGuide() {
 
 function closeModal() {
   elements.modal.classList.remove("open");
-  elements.modal.classList.remove("status-sheet", "betting-sheet", "help-sheet");
+  elements.modal.classList.remove("status-sheet", "betting-sheet", "help-sheet", "options-sheet");
   elements.modal.classList.remove("normal-event-modal", "special-event-modal", "game-over-modal");
   elements.modal.setAttribute("aria-hidden", "true");
 }
@@ -1777,7 +1849,7 @@ function requestMainMenu() {
   });
 }
 
-function cancelMainMenu() { game.uiOverlayOpen = false; closeModal(); }
+function cancelMainMenu() { game.uiOverlayOpen = false; closeModal(); updateHUD(); }
 
 function returnToMainMenu() {
   const playerName = game.playerName || elements.playerNameInput.value.trim().slice(0, 12);
@@ -1786,10 +1858,9 @@ function returnToMainMenu() {
   showStartScreen();
 }
 
-elements.helpButton.addEventListener("click", openHelp);
+elements.optionsButton.addEventListener("click", openOptions);
 elements.itemStatusButton.addEventListener("click", openItemStatus);
 elements.drawStack.addEventListener("click", drawTile);
-elements.mainMenuButton.addEventListener("click", requestMainMenu);
 elements.startRoundButton.addEventListener("click", commitRoundConfiguration);
 elements.preRoundSkipButton.addEventListener("click", selectPreRoundSkip);
 elements.tilePeekButton.addEventListener("click", showTileOverview);

@@ -78,13 +78,17 @@ Phase 1-C 已將 Placeholder 替換為 `PRE_ROUND_EVENT_DEFINITIONS` 正式 Pool
 
 海底撈月改為「本局最後一張正式牌完成第一條連線」。因此 14、15、16 張局分別在第 14、15、16 張判定。
 
+天聽維持「前 5 次 Formal Draw 內形成第一次聽牌」的既有條件，獎勵為 `+100 rawPoints`，並依既有結算規則受本局倍率影響。
+
 ## 8. 小遊戲池
 
-正式 Mini-game Registry：記憶大師、彈珠台、棒球九宮格。Phase 3-A 已完成記憶大師正式玩法；後兩款仍為 Placeholder。
+正式 Mini-game Registry：記憶大師、彈珠台、棒球九宮格。記憶大師與彈珠台已完成正式 Module 與 Main Integration；棒球九宮格仍為 Placeholder。
 
 Phase 2 在玩家準備取得正式第 13 張時顯示不可略過關閉的 Opportunity Card，玩家必須選擇「進入」或「直接摸牌」。直接摸牌會立即由 Main Game 執行普通隨機摸牌；挑戰失敗則停在不可關閉的 Result Card，直到玩家按「摸牌」才執行普通隨機摸牌；挑戰成功直接開啟不可取消的 Shared Tile Picker，讓玩家從合法 `remainingTiles` 自選一張。Picker 的「查看牌型」以 authoritative Round State 顯示唯讀縮小版 6×6 目前棋盤及 34 張普通牌 Overview，尚未 Confirm 的選擇不會提前反映在棋盤。Mini-game Contract 只回傳 `{ success }`，不決定 `tileId`；三條路徑最後都經共用正式取得牌 Pipeline 成為第 13 張，不增加額外牌，也不提供分數、局數、倍率、道具或其他 Reward。
 
 Phase 3-A「記憶大師」每次等權隨機選擇水果、動物、食物、運動之一，再以 50／50 選擇中文或 English；從該主題 12 個候選抽取 4 個不同項目並洗牌。牌面完整顯示 5 秒倒數後全部蓋起，題目以 Instruction、大型 Emoji 與在地化名稱呈現，玩家只猜一次；答對回傳 SUCCESS，答錯會先揭示所選牌、1 秒後再揭示正確牌，短暫停留後回傳 FAILURE。所有 Setup RNG 可注入測試，倒數、延遲揭牌與結果 Timer 均納入 Mini-game lifecycle cleanup。
+
+「彈珠台」由 `minigames/pajur.js` 提供唯一正式玩法來源；「珠珠寶貝」以 `forcedMiniGameId: pachinko` 指定第 13 張 Opportunity。GREEN／RED 只回傳 `{ success: boolean }`，SUCCESS、FAILURE 與直接摸牌均沿用共用 Phase 2 正式牌流程。
 
 正式小遊戲開發採 `Module + Standalone Playground + Main Integration`：Module 是玩法、畫面與 lifecycle 的唯一正式來源，Standalone HTML 只提供開始、結果及再玩一次的 Development／Playtest Shell，MoMaJohnPlus 則是接收 `{ success: boolean }` 並銜接第 13 張流程的 Integration Shell。新小遊戲應先以同一 Module 在 Standalone 完成 Playtest，再註冊並接入主程式；不得複製第二套玩法實作。
 

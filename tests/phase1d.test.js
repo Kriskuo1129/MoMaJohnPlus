@@ -171,6 +171,15 @@ globalThis.phase1DTest = {
     restartCurrentRound();
     return { first, second, reset: game.round.chanceMakerTriggered };
   },
+  earlyWaiting(drawIndex) {
+    game = freshGameState("TEST");
+    game.round = createRound();
+    game.round.board = [...GAME_TILES];
+    LINE_DEFINITIONS[0].indexes.slice(0, 5).forEach(index => game.round.drawn.add(game.round.board[index].id));
+    game.round.drawIndex = drawIndex;
+    updateWaitingLines();
+    return { points: game.round.rawPoints, earned: game.round.achievements.has("early-waiting") };
+  },
   pocket(itemId, acquiredTarget = false) {
     game = freshGameState("TEST");
     game.items = [itemId];
@@ -242,7 +251,7 @@ globalThis.phase1DTest = {
     elements.tilePeekButton.dispatch("click");
     const html = elements.tileOverviewGrid.innerHTML;
     const opened = elements.tileOverviewOverlay.classList.contains("open");
-    const backgroundLocked = elements.drawStack.disabled && elements.itemStatusButton.disabled && elements.helpButton.disabled;
+    const backgroundLocked = elements.drawStack.disabled && elements.itemStatusButton.disabled && elements.optionsButton.disabled;
     ["pointerup", "pointercancel", "pointerleave", "lostpointercapture"].forEach(type => elements.tilePeekButton.dispatch(type));
     const stayedOpen = elements.tileOverviewOverlay.classList.contains("open");
     elements.tileOverviewClose.dispatch("click");
@@ -254,6 +263,36 @@ globalThis.phase1DTest = {
     game.round.started = true;
     restartCurrentRound();
     return { html, opened, backgroundLocked, stayedOpen, closed, stateBefore, stateAfter, uiUnlocked: !game.uiOverlayOpen, restartClosed: !elements.tileOverviewOverlay.classList.contains("open"), hidden: elements.tileOverviewOverlay.attributes["aria-hidden"] };
+  },
+  optionsNavigation() {
+    game = freshGameState("TEST");
+    game.round = createRound();
+    game.state = GAME_STATES.DRAWING;
+    game.score = 25;
+    game.round.drawIndex = 3;
+    game.round.finalMultiplier = 2;
+    const snapshot = () => JSON.stringify({ score: game.score, drawIndex: game.round?.drawIndex, multiplier: game.round?.finalMultiplier, attempts: game.attemptsConsumed, items: game.items });
+    const before = snapshot();
+    openOptions();
+    const opened = elements.modal.classList.contains("open");
+    const optionActions = elements.modalActions.children.map(button => button.textContent);
+    const optionClasses = elements.modalActions.children.map(button => button.className);
+    closeOptions();
+    const closePreserved = snapshot() === before && !game.uiOverlayOpen;
+    openOptions();
+    openHelpFromOptions();
+    const helpTitle = elements.modalTitle.textContent;
+    returnToOptions();
+    const returnedToOptions = elements.modalTitle.textContent === "選項" && game.uiOverlayOpen;
+    closeOptions();
+    const helpPreserved = snapshot() === before && !game.uiOverlayOpen;
+    openOptions();
+    requestMainMenuFromOptions();
+    const usesMainMenuConfirmation = elements.modalTitle.textContent === "確定離開目前遊戲？" && game.uiOverlayOpen;
+    cancelMainMenu();
+    const controlsUnlockedAfterCancel = !elements.optionsButton.disabled && !elements.drawStack.disabled;
+    for (let index = 0; index < 10; index += 1) { openOptions(); closeOptions(); }
+    return { opened, optionActions, optionClasses, closePreserved, helpTitle, returnedToOptions, helpPreserved, usesMainMenuConfirmation, controlsUnlockedAfterCancel, optionListenerCount: elements.optionsButton.listeners.get("click")?.length ?? 0, finalOverlayOpen: game.uiOverlayOpen };
   },
   floorScore() {
     game = freshGameState("TEST");
@@ -270,6 +309,8 @@ assert.equal(new Set(api.definitions.map(item => item.id)).size, 10);
 assert.equal(JSON.stringify(api.definitions.map(item => item.title)), JSON.stringify(["大吉的籤", "小吉的籤", "小凶的籤", "大凶的籤", "嗆司Maker", "喝完的飲料杯", "免洗護身符", "口袋中的發", "口袋中的中", "口袋中的白板"]));
 assert.equal(api.preRoundDefinitions.filter(event => event.type === "ITEM").length, 1);
 assert.match(pageHtml, /id="pre-round-skip-button"[^>]*>這局不選事件<\/button>/);
+assert.match(pageHtml, /id="options-button"[^>]*class="guide-button"[^>]*>選項<\/button>/);
+assert.doesNotMatch(pageHtml, /id="help-button"|id="main-menu-button"/);
 assert.equal(JSON.stringify(api.freshItems()), "[]");
 assert.equal(JSON.stringify(api.selectedWithoutCommit()), "[]");
 
@@ -411,6 +452,22 @@ assert.doesNotMatch(pageHtml, /MoMaJohnPlus/);
 assert.match(styleSource, /\.player-name-field input\{[^}]*text-align:center/);
 assert.match(gameSource, /hasDecorativeSingleCharacterIcon = \/\^\\p\{Script=Han\}\$\/u/);
 assert.match(gameSource, /modalIcon\.textContent = hasDecorativeSingleCharacterIcon \? "" : icon/);
+
+const options = api.optionsNavigation();
+assert.equal(options.opened, true);
+assert.equal(JSON.stringify(options.optionActions), JSON.stringify(["說明", "回主選單", "關閉"]));
+assert.equal(JSON.stringify(options.optionClasses), JSON.stringify(["secondary", "secondary", null]));
+assert.equal(options.closePreserved, true);
+assert.equal(options.helpTitle, "說明");
+assert.equal(options.returnedToOptions, true);
+assert.equal(options.helpPreserved, true);
+assert.equal(options.usesMainMenuConfirmation, true);
+assert.equal(options.controlsUnlockedAfterCancel, true);
+assert.equal(options.optionListenerCount, 1);
+assert.equal(options.finalOverlayOpen, false);
+
+assert.equal(JSON.stringify(api.earlyWaiting(5)), JSON.stringify({ points: 100, earned: true }));
+assert.equal(JSON.stringify(api.earlyWaiting(6)), JSON.stringify({ points: 0, earned: false }));
 
 assert.equal(JSON.stringify(api.floorScore()), JSON.stringify({ score: 0, delta: -5 }));
 

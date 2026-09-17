@@ -23,8 +23,8 @@ MoMaJohnPlus 是由原始 [MoMaJohn](https://github.com/Kriskuo1129/MoMaJohn) �
 - 建立「場」與「局」的完整遊戲結構。
 - 重新整理局中事件分類與效果。
 - Phase 2 已在每局正式第 13 張加入一次小遊戲機會；直接摸牌會立即普通隨機摸牌，挑戰失敗需在 Result Card 按「摸牌」，挑戰成功則可從合法剩餘牌自選一張。選牌時可查看唯讀縮小棋盤與 34 張已抽牌型。
-- Phase 3-A 已完成「記憶大師」正式玩法：隨機主題與語言、12 抽 4、4 張牌、5 秒記憶、大圖示題目及一次猜牌；猜錯會先揭所選牌，1 秒後才揭正解。彈珠台、棒球九宮格與其他互動仍待後續階段。
-- 小遊戲採 `Module + Standalone Playground + Main Integration` 工作模式：`minigames/memory-master.js` 是記憶大師正式玩法的唯一來源，`memory-master.html` 僅提供快速反覆測試的開發外殼，MoMaJohnPlus 主程式則負責接收 `{ success }` 並銜接正式牌流程。新小遊戲應先在 Standalone Playground 完成玩法與節奏 Playtest，再接入主程式。
+- Phase 3-A 已完成「記憶大師」正式玩法：隨機主題與語言、12 抽 4、4 張牌、5 秒記憶、大圖示題目及一次猜牌；猜錯會先揭所選牌，1 秒後才揭正解。彈珠台也已完成 Standalone Prototype 並接入主程式；棒球九宮格與其他互動仍待後續階段。
+- 小遊戲採 `Module + Standalone Playground + Main Integration` 工作模式：`minigames/memory-master.js` 與 `minigames/pajur.js` 分別是記憶大師與彈珠台正式玩法的唯一來源，各自的 Standalone HTML 僅提供快速反覆測試的開發外殼，MoMaJohnPlus 主程式則負責接收 `{ success }` 並銜接正式牌流程。新小遊戲應先在 Standalone Playground 完成玩法與節奏 Playtest，再接入主程式。
 
 完整設計與階段規劃請參閱 [GAME_SPEC.md](GAME_SPEC.md) 及 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)。
 
@@ -52,7 +52,7 @@ python -m http.server 8000
 
 ## Legacy Gameplay baseline
 
-目前可執行版本已完成 Phase 1-A～1-E 與 Phase 2 Mini-game Framework：玩家每局先從三張正式場中事件選一張並選擇槓桿，按下「開牌局」後才 Commit、扣除局數，依 committed config 進行 14／15／16 張正式摸牌。正式第 13 張會提供三款小遊戲之一；小遊戲只回傳 success／failure，成功使用 Shared Tile Picker 自選牌，失敗由玩家在 Result Card 確認普通摸牌，直接摸牌則立即使用普通 RNG，最後統一經正式取得牌流程。
+目前可執行版本已完成 Phase 1-A～1-E 與 Phase 2 Mini-game Framework：玩家每局先從三張正式場中事件選一張並選擇槓桿，按下「開牌局」後才 Commit、扣除局數，依 committed config 進行 14／15／16 張正式摸牌。正式第 13 張會提供三款小遊戲之一；記憶大師與彈珠台已使用正式 Module，小遊戲只回傳 success／failure，成功使用 Shared Tile Picker 自選牌，失敗由玩家在 Result Card 確認普通摸牌，直接摸牌則立即使用普通 RNG，最後統一經正式取得牌流程。前 5 次正式摸牌內首次形成聽牌的天聽獎勵為 +100 rawPoints，照既有規則受本局倍率影響。
 
 原始文件：
 

@@ -34,6 +34,18 @@ const context = vm.createContext({
   console, document, localStorage: { getItem: () => "", setItem() {} }, performance: { now: () => 0 },
   requestAnimationFrame() {}, setTimeout() {}, clearTimeout() {}, setInterval() {}, clearInterval() {}, Math, Object, Array, Set, Map, String, Number, Boolean
 });
+context.PaJuR = {
+  startCount: 0, destroyCount: 0, onComplete: null,
+  start({ onComplete }) {
+    this.startCount += 1;
+    this.onComplete = onComplete;
+    let destroyed = false;
+    const owner = this;
+    return { destroy() { if (destroyed) return false; destroyed = true; owner.destroyCount += 1; return true; } };
+  },
+  complete(result) { return this.onComplete(result); },
+  reset() { this.startCount = 0; this.destroyCount = 0; this.onComplete = null; }
+};
 const root = path.resolve(__dirname, "..");
 const source = `${fs.readFileSync(path.join(root, "minigames", "memory-master.js"), "utf8")}\n${fs.readFileSync(path.join(root, "game-config.js"), "utf8")}\n${fs.readFileSync(path.join(root, "game.js"), "utf8")}\n
 animateStackTile = async () => {};
@@ -52,7 +64,7 @@ globalThis.phase2Test = {
     game = freshGameState("TEST"); game.round = createRound(formalDrawCount, []);
     game.round.committed = true; game.round.started = true;
     game.round.config = { formalDrawCount, forcedMiniGameId, leverageMultiplier: 1, finalMultiplier: 1, activeBetId: null };
-    game.state = GAME_STATES.DRAWING; phase2AcquireCount = 0; phase2RandomTileCount = 0; phase2EventChoiceCount = 0; return game.round;
+    game.state = GAME_STATES.DRAWING; phase2AcquireCount = 0; phase2RandomTileCount = 0; phase2EventChoiceCount = 0; PaJuR.reset(); return game.round;
   },
   putNext(round, tileId) { const order = [...round.hand, ...round.remaining]; const targetIndex = order.findIndex(tile => tile.id === tileId); [order[round.drawIndex], order[targetIndex]] = [order[targetIndex], order[round.drawIndex]]; round.hand = order.slice(0, round.formalDrawCount); round.remaining = order.slice(round.formalDrawCount); },
   available() { return getAvailableMiniGames().map(definition => definition.id); },
@@ -72,6 +84,12 @@ globalThis.phase2Test = {
     const before = { drawIndex: round.drawIndex, acquired: phase2AcquireCount, randomTiles: phase2RandomTileCount };
     const resolution = await resolveMiniGameChallenge({ success });
     return { round, resolution, before, state: game.state, acquired: phase2AcquireCount, randomTiles: phase2RandomTileCount, picker: round.tilePicker };
+  },
+  pajurChallenge(success) {
+    const round = this.setup(15, "pachinko"); round.drawIndex = 12;
+    const before = { score: game.score, attempts: game.attemptsConsumed, multiplier: round.finalMultiplier, items: JSON.stringify(game.items), drawIndex: round.drawIndex };
+    openMiniGameOffer(); const started = startMiniGame(); PaJuR.complete({ success });
+    return { started, starts: PaJuR.startCount, destroys: PaJuR.destroyCount, controller: round.miniGame.pajur, result: round.miniGame.challengeResult, state: game.state, picker: round.tilePicker, before, after: { score: game.score, attempts: game.attemptsConsumed, multiplier: round.finalMultiplier, items: JSON.stringify(game.items), drawIndex: round.drawIndex } };
   },
   async finishFailure(doubleClick = false) {
     const first = completeFailureMiniGameDraw();
@@ -151,6 +169,13 @@ const api = context.phase2Test;
   const failedDraw = await api.finishFailure(true);
   assert.deepEqual({ drawIndex: failedDraw.drawIndex, acquired: failedDraw.acquired, randomTiles: failedDraw.randomTiles, completed: failedDraw.completed, state: failedDraw.state, second: failedDraw.second }, { drawIndex: 13, acquired: 1, randomTiles: 1, completed: true, state: "DRAWING", second: false });
 
+  const pajurSuccess = api.pajurChallenge(true);
+  assert.equal(pajurSuccess.started, true); assert.equal(pajurSuccess.starts, 1); assert.equal(pajurSuccess.destroys, 1); assert.equal(pajurSuccess.controller, null); assert.equal(pajurSuccess.result, "SUCCESS"); assert.equal(pajurSuccess.state, "MINIGAME_REWARD"); assert.ok(pajurSuccess.picker); assert.deepEqual(pajurSuccess.after, pajurSuccess.before);
+  api.selectTile(pajurSuccess.picker.tiles[0]); await api.confirm(); assert.equal(api.pickerState().drawIndex, 13);
+  const pajurFailure = api.pajurChallenge(false);
+  assert.equal(pajurFailure.started, true); assert.equal(pajurFailure.starts, 1); assert.equal(pajurFailure.destroys, 1); assert.equal(pajurFailure.controller, null); assert.equal(pajurFailure.result, "FAILURE"); assert.equal(pajurFailure.state, "MINIGAME_ACTIVE"); assert.equal(pajurFailure.picker, null); assert.deepEqual(pajurFailure.after, pajurFailure.before);
+  assert.equal((await api.finishFailure()).drawIndex, 13);
+
   const success = await api.challenge(true, null, ["event-1", "event-2"]);
   assert.equal(success.state, "MINIGAME_REWARD"); assert.ok(success.picker.tiles.length > 0); assert.ok(success.picker.tiles.some(id => !id.startsWith("event-"))); assert.ok(success.picker.tiles.includes("event-1")); assert.ok(success.picker.tiles.includes("event-2")); assert.equal(success.acquired, 0); assert.equal(success.randomTiles, 0); assert.equal(api.pickerState().confirmDisabled, true);
   assert.match(api.pickerHtml(), /data-picker-tile-id="event-1"/); assert.match(api.pickerHtml(), /data-picker-tile-id="event-2"/); assert.match(api.pickerHtml(), /special-face/);
@@ -176,7 +201,7 @@ const api = context.phase2Test;
   const line = await api.formalEffects(); assert.equal(line.drawIndex, 13); assert.equal(line.drawn, true); assert.equal(line.line, true);
   const waiting = await api.waitingEffect(); assert.equal(waiting.everWaited, true); assert.ok(waiting.waiting > 0); assert.equal(await api.betEffect(), true);
   const restarted = api.restart("pachinko");
-  assert.deepEqual(JSON.parse(JSON.stringify(restarted.miniGame)), { offered: false, completed: false, selectedId: null, challengeResult: null, challengeResolved: false, failureDrawStarted: false, memory: null });
+  assert.deepEqual(JSON.parse(JSON.stringify(restarted.miniGame)), { offered: false, completed: false, selectedId: null, challengeResult: null, challengeResolved: false, failureDrawStarted: false, memory: null, pajur: null });
   assert.equal(restarted.tilePicker, null); assert.equal(restarted.forced, "pachinko"); assert.equal(restarted.attemptsSame, true); assert.equal(api.bonusDoesNotOffer(), false);
   console.log("Phase 2 challenge contract and shared tile picker tests: PASS");
 })().catch(error => { console.error(error); process.exitCode = 1; });
