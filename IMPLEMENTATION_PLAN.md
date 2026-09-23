@@ -70,7 +70,7 @@ Completed：
 
 - 每局只在正式第 13 張建立一次 Mini-game Opportunity。
 - 建立彈珠台、棒球九宮格、記憶大師三款 Registry Definition。
-- 未完成的小遊戲 Placeholder 只回傳可測試的 `{ success }` Challenge Result；直接摸牌立即執行普通隨機摸牌，失敗則先顯示不可關閉的 Result Card，待玩家按「摸牌」才執行普通隨機摸牌。
+- 小遊戲只回傳可測試的 `{ success }` Challenge Result；直接摸牌立即執行普通隨機摸牌，失敗則先顯示不可關閉的 Result Card，待玩家按「摸牌」才執行普通隨機摸牌。
 - 成功時使用 Shared Tile Picker 從合法 `remainingTiles` 自選牌；Picker Overview 以目前 Round State 渲染唯讀 6×6 小棋盤與 34 張普通牌，三條取得路徑最後都串接共用正式取得牌 Pipeline。
 - 小遊戲不提供分數、局數、倍率、道具或其他 Reward；真正玩法留待 Phase 3。
 
@@ -81,9 +81,9 @@ Phase 3-A Completed：
 - 正式完成「記憶大師」：4 個等權主題、中文／English 50／50、每類 12 抽 4、4 張牌及 5 秒記憶倒數。
 - 題目採 Instruction、大型 Emoji 與在地化名稱；猜錯先揭所選牌，1 秒後才揭正解，再依既有 Contract 回傳 FAILURE。
 - 玩家蓋牌後只猜一次；正確／錯誤只回傳 `{ success }`，由 Phase 2 Main Game Contract 接續 Shared Tile Picker 或 Failure Result Card。
-- 集中可注入 RNG、一次判定鎖及可清除 countdown/result timers；棒球九宮格仍保持 Placeholder。
+- 集中可注入 RNG、一次判定鎖及可清除 countdown/result timers；棒球九宮格也已完成相同的 lifecycle 與 cleanup contract。
 - 將記憶大師抽成 `minigames/memory-master.js` 正式共用 Module，並由主程式與 `memory-master.html` Standalone Playground 共用；Module 是玩法唯一來源，Standalone 是 Development／Playtest Shell，MoMaJohnPlus 是 Integration Shell。
-- 將已完成 Playtest 的 `minigames/pajur.js`／`pajur.css` 直接接入同一 Mini-game Contract；Standalone 與 Main Integration 共用同一 Module，珠珠寶貝固定指定彈珠台。
+- 將已完成 Playtest 的 `minigames/pajur.js`／`pajur.css` 與 `minigames/baseball9.js`／`baseball9.css` 接入同一 Mini-game Contract；Standalone 與 Main Integration 共用同一 Module，珠珠寶貝與當地球隊贏球分別固定指定彈珠台與棒球九宮格。
 - 後續新小遊戲沿用 `Module + Standalone Playground + Main Integration`：先在 Standalone 完成玩法與節奏 Playtest，再接入 Registry 與 Phase 2 Contract，不建立大型抽象框架。
 
 Settlement & Achievement Update Completed：
@@ -97,7 +97,6 @@ Planned / 尚未實作：
 
 - 大頭貼上傳與結算大頭貼。
 - 小遊戲大頭貼 Easter Egg。
-- 棒球九宮格真正玩法，僅需向 Main Game 回傳 success／failure。
 - 小遊戲輔助 Item。
 - 玩家操作取得麻將牌。
 - Playtest。

@@ -94,7 +94,7 @@ function createRound(formalDrawCount = RULES.baseFormalDrawCount, eventOptions =
     preRound: { eventOptions, eventSelectionType: "UNSELECTED", selectedEventId: null, selectedLeverage: 1 }, config: null, committed: false,
     completedLines: new Set(), activeWaiting: new Set(), announcedWaiting: new Set(), everWaitingLines: new Set(), achievements: new Set(),
     rawPoints: 0, roundScore: 0, roundLines: 0, roundMultiplier: 1, finalMultiplier: 1, leverageConfigured: false, betSettled: false, betResult: null, everWaited: false, waitingAnnouncements: 0, chanceMakerTriggered: false, pendingItemId: null, itemRevealConfirmed: false, rpsResult: null,
-    miniGame: { offered: false, completed: false, selectedId: null, challengeResult: null, challengeResolved: false, failureDrawStarted: false, memory: null, pajur: null }, tilePicker: null,
+    miniGame: { offered: false, completed: false, selectedId: null, challengeResult: null, challengeResolved: false, failureDrawStarted: false, memory: null, pajur: null, baseball9: null }, tilePicker: null,
     pointsSettled: false, multiplierPoints: 0, actualMultiplierPoints: 0, betNetPoints: 0, finalRoundChange: 0, scoreBeforeSettlement: 0, scoreBreakdown: [], activeItemUses: 0, completedStatsRecorded: false, eventAttemptDelta: 0, eventAddedAttempts: 0,
     bonusMissing: new Set(), bonusCandidates: [], selectedBonusTiles: [], bonusResolved: false, bonusPendingStarted: false, bonusAttemptGain: 0
   };
@@ -689,6 +689,7 @@ function startMiniGame() {
   game.state = GAME_STATES.MINIGAME_ACTIVE;
   if (definition.implementation === "MEMORY_MASTER") return startMemoryMaster();
   if (definition.implementation === "PAJUR") return startPaJuR();
+  if (definition.implementation === "BASEBALL9") return startBaseball9();
   openModal({
     icon: "🎮", kicker: "", title: definition.name,
     body: `<article class="minigame-placeholder"><p>小遊戲施工中！</p><span>這次先模擬挑戰結果。</span></article>`,
@@ -745,6 +746,31 @@ function clearPaJuRState() {
   if (!controller) return;
   controller.destroy();
   game.round.miniGame.pajur = null;
+}
+
+function startBaseball9(random = Math.random) {
+  if (game.state !== GAME_STATES.MINIGAME_ACTIVE || game.round.miniGame.baseball9) return false;
+  openModal({ icon: "⚾", kicker: "", title: "棒球九宮格", body: '<div class="baseball9-host" data-baseball9-root></div>', actions: [] });
+  const container = elements.modalBody.querySelector("[data-baseball9-root]");
+  const controller = Baseball9.start({
+    container,
+    random,
+    onComplete(result) {
+      if (game.round?.miniGame.baseball9 !== controller) return;
+      controller.destroy();
+      game.round.miniGame.baseball9 = null;
+      resolveMiniGameChallenge(result);
+    }
+  });
+  game.round.miniGame.baseball9 = controller;
+  return true;
+}
+
+function clearBaseball9State() {
+  const controller = game.round?.miniGame.baseball9;
+  if (!controller) return;
+  controller.destroy();
+  game.round.miniGame.baseball9 = null;
 }
 
 function runMiniGamePlaceholder(random = Math.random) {
@@ -838,6 +864,7 @@ function clearMiniGameLifecycle() {
   if (!game.round?.miniGame) return;
   clearMemoryMasterState();
   clearPaJuRState();
+  clearBaseball9State();
   game.round.tilePicker = null;
   if ([GAME_STATES.MINIGAME_OFFER, GAME_STATES.MINIGAME_ACTIVE, GAME_STATES.MINIGAME_REWARD].includes(game.state)) game.round.miniGame.completed = true;
 }

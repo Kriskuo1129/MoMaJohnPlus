@@ -82,7 +82,7 @@ Phase 1-C 已將 Placeholder 替換為 `PRE_ROUND_EVENT_DEFINITIONS` 正式 Pool
 
 ## 8. 小遊戲池
 
-正式 Mini-game Registry：記憶大師、彈珠台、棒球九宮格。記憶大師與彈珠台已完成正式 Module 與 Main Integration；棒球九宮格仍為 Placeholder。
+正式 Mini-game Registry：記憶大師、彈珠台、棒球九宮格。三款皆已完成正式 Module、Standalone Playground 與 Main Integration。
 
 Phase 2 在玩家準備取得正式第 13 張時顯示不可略過關閉的 Opportunity Card，玩家必須選擇「進入」或「直接摸牌」。直接摸牌會立即由 Main Game 執行普通隨機摸牌；挑戰失敗則停在不可關閉的 Result Card，直到玩家按「摸牌」才執行普通隨機摸牌；挑戰成功直接開啟不可取消的 Shared Tile Picker，讓玩家從合法 `remainingTiles` 自選一張。Picker 的「查看牌型」以 authoritative Round State 顯示唯讀縮小版 6×6 目前棋盤及 34 張普通牌 Overview，尚未 Confirm 的選擇不會提前反映在棋盤。Mini-game Contract 只回傳 `{ success }`，不決定 `tileId`；三條路徑最後都經共用正式取得牌 Pipeline 成為第 13 張，不增加額外牌，也不提供分數、局數、倍率、道具或其他 Reward。
 

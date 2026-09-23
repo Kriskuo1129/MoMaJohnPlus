@@ -174,3 +174,4 @@
 @media(max-width:759px){.draw-zone{grid-template-columns:minmax(0,1fr) minmax(0,1.18fr) minmax(0,1fr);gap:4px}.draw-zone>.side-action-button,.draw-zone>.draw-button{min-height:62px;padding:6px 3px;font-size:clamp(.66rem,3vw,.84rem)}.item-slots{grid-template-columns:1fr}.item-slot{min-height:0}.item-tile-options{grid-template-columns:repeat(6,minmax(40px,1fr))}.tile-overview-card{max-height:calc(100dvh - 20px);padding:12px;overflow-y:auto}.tile-overview-grid{gap:6px}.tile-overview-grid section{grid-template-columns:38px 1fr;gap:4px}.overview-tile{min-height:34px;font-size:1.22rem}.hud-score-panel{min-height:64px}}
 .modal.options-sheet .modal-actions{flex-direction:column}
 .pajur-host{height:min(68dvh,650px)}
+.baseball9-host{height:min(68dvh,650px)}

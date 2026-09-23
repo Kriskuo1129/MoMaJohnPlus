@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1,maximum-scale=1,user-scalable=no">
+  <title>棒球九宮格 Playground</title>
+  <link rel="stylesheet" href="baseball9.css">
+</head>
+<body class="baseball9-page">
+  <main class="baseball9-shell">
+    <h1>棒球九宮格</h1>
+    <div id="baseball9-stage" class="baseball9-stage"></div>
+    <footer class="baseball9-footer">
+      <p id="baseball9-result" class="baseball9-result" aria-live="polite"></p>
+      <button id="baseball9-action" class="baseball9-action" type="button" hidden>再玩一次</button>
+    </footer>
+  </main>
+  <script src="baseball9.js"></script>
+  <script>
+    const stage = document.querySelector("#baseball9-stage");
+    const result = document.querySelector("#baseball9-result");
+    const action = document.querySelector("#baseball9-action");
+    let controller = null;
+
+    function startRound() {
+      controller?.destroy();
+      result.textContent = "";
+      action.hidden = true;
+      controller = Baseball9.start({
+        container: stage,
+        onComplete(outcome) {
+          result.textContent = outcome.success ? "SUCCESS" : "FAILURE";
+          action.hidden = false;
+        }
+      });
+    }
+
+    action.addEventListener("click", startRound);
+    startRound();
+  </script>
+</body>
+</html>

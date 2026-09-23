@@ -82,7 +82,7 @@ const api = context.phase3aTest;
   assert.equal(api.definitions.memoryMaster.name, "記憶大師");
   assert.equal(api.definitions.memoryMatch, undefined);
   assert.equal(api.definitions.pachinko.implementation, "PAJUR");
-  assert.equal(api.definitions.baseball9.implementation, undefined);
+  assert.equal(api.definitions.baseball9.implementation, "BASEBALL9");
   assert.equal(api.themes.length, 4);
   for (const theme of api.themes) { assert.equal(theme.items.length, 12); assert.ok(theme.name.zh); assert.ok(theme.name.en); }
 

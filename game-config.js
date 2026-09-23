@@ -17,7 +17,7 @@ const SCORE_CONFIG = Object.freeze({
 
 const MINIGAME_DEFINITIONS = Object.freeze({
   pachinko: Object.freeze({ id: "pachinko", name: "彈珠台", enabled: true, implementation: "PAJUR" }),
-  baseball9: Object.freeze({ id: "baseball9", name: "棒球九宮格", enabled: true }),
+  baseball9: Object.freeze({ id: "baseball9", name: "棒球九宮格", enabled: true, implementation: "BASEBALL9" }),
   memoryMaster: Object.freeze({ id: "memoryMaster", name: "記憶大師", enabled: true, implementation: "MEMORY_MASTER" })
 });
 
