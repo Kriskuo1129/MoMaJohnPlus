@@ -1,38 +1,33 @@
 # MoMaJohnPlus
 
-MoMaJohnPlus 是由原始 [MoMaJohn](https://github.com/Kriskuo1129/MoMaJohn) 演進而來的加強版「台灣夜市摸麻將」瀏覽器遊戲。專案採純 HTML、CSS、JavaScript 製作，不需後端或建置工具即可執行。
+MoMaJohnPlus 是由 [MoMaJohn](https://github.com/Kriskuo1129/MoMaJohn) 演進而來的台灣夜市摸麻將瀏覽器遊戲。專案以原生 HTML、CSS、JavaScript 製作，不需建置工具或後端服務；正式版本已完成手機實機驗證，主程式與三款小遊戲皆可直接由靜態檔案執行。
 
-## Repository 狀態
+## Project Status
 
-- 已建立 MoMaJohnPlus 專案身份與文件基線。
-- Phase 1-A 已完成單一遊戲模式、15 張正式牌基準、分數用語與基礎規則轉換。
-- Phase 1-B 已完成每局 PRE_ROUND 開局準備、場中事件三選一框架、槓桿整合與一次性 Commit 流程。
-- Phase 1-C 已完成 9 個場中下注、6 個場中特殊、正式隨機三選一 Pool、14／15／16 張動態牌數及 committed round config。
-- Phase 1-D 已完成 10 個 Item、三格 Item inventory、取得／強制替換流程、嗆司Maker、口袋系列直接額外取得指定國字牌，以及查看牌型。
-- Phase 1-E 已完成 PRE_ROUND 加權抽取、四種籤運勢與免洗護身符負面事件攔截（包含瓦斯桶爆炸、停電）。
-- Settlement & Achievement Update 已完成結構化單局分數明細、實際最終變化，以及依整場正式完成局判定的 15 個當場稱號。
-- PRE_ROUND 每局皆可主動選擇「這局不選事件」，放棄事件後仍可使用 ×1／×2／×3 槓桿。
-- 摸牌、連線、聽牌、局中事件、補牌及結算仍延續原始 Gameplay baseline；舊 Checkbox 下注 Gameplay 已正式退休。
-- Plus 新功能將依開發計畫分階段導入。
-- 原始 MoMaJohn Repository 仍獨立保留，不受本專案後續開發影響。
+**Finalized / Archived Stable Baseline**
 
-## Plus 核心方向
+目前版本的 Gameplay、Mobile UI、三款小遊戲、測試與正式文件均已完成並封板。這不表示所有曾討論的構想都已採用；封存範圍只涵蓋實際落地且通過驗證的系統。Repository 可長期保存，也可作為後續實驗、衍生遊戲與系統重用的基底，目前沒有進行中的功能 Roadmap。
 
-以下項目仍為 **Planned / 尚未實作**：
+## What is MoMaJohnPlus
 
-- 建立「場」與「局」的完整遊戲結構。
-- 重新整理局中事件分類與效果。
-- Phase 2 已在每局正式第 13 張加入一次小遊戲機會；直接摸牌會立即普通隨機摸牌，挑戰失敗需在 Result Card 按「摸牌」，挑戰成功則可從合法剩餘牌自選一張。選牌時可查看唯讀縮小棋盤與 34 張已抽牌型。
-- Phase 3-A 已完成「記憶大師」正式玩法：隨機主題與語言、12 抽 4、4 張牌、5 秒記憶、大圖示題目及一次猜牌；猜錯會先揭所選牌，1 秒後才揭正解。彈珠台與棒球九宮格也已完成 Standalone Prototype 並接入主程式。
-- 小遊戲採 `Module + Standalone Playground + Main Integration` 工作模式：`minigames/memory-master.js`、`minigames/pajur.js` 與 `minigames/baseball9.js` 分別是三款正式玩法的唯一來源，各自的 Standalone HTML 僅提供快速反覆測試的開發外殼，MoMaJohnPlus 主程式則負責接收 `{ success }` 並銜接正式牌流程。新小遊戲應先在 Standalone Playground 完成玩法與節奏 Playtest，再接入主程式。
+核心玩法由摸麻將、高分挑戰、PRE_ROUND 策略、BET、Items、Events 與 Mini-games 組成。玩家在每局開始前承擔機會成本與倍率風險，再以正式摸牌、事件、小遊戲、補牌與結算累積整場分數。
 
-完整設計與階段規劃請參閱 [GAME_SPEC.md](GAME_SPEC.md) 及 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)。
+## 正式版本摘要
 
-目前 PRE_ROUND 每局會從正式 Pool 隨機抽出三個不重複選項，玩家也可明確放棄事件；兩種選擇都能搭配合法槓桿。場中下注於局末獨立結算且不乘倍率；場中特殊可調整倍率、正式牌數或本局規則；選擇「神秘禮物到來」並 Commit 後才會抽取 Item，先揭曉內容，再由玩家收下；Item 欄滿三格時則由揭曉進入強制替換。「珠珠寶貝」與「當地球隊贏球」會分別指定第 13 張提供彈珠台與棒球九宮格。
+- 每場初始 6 次機會；每局在開局準備選擇三張隨機事件之一或略過，並配置 ×1／×2／×3 槓桿。
+- 正式牌數依特殊事件為 14、15 或 16 張；第 13 張提供一次小遊戲機會。
+- 場中事件池包含 9 個下注、5 個可抽取的特殊事件與「神秘禮物到來」；另保留 1 個停用中的特殊定義。
+- 道具系統包含 3 格欄位與 10 個道具；籤影響局中事件權重，免洗護身符攔截負面事件，口袋系列可直接取得中、發、白。
+- 局中事件池共有 24 個事件：12 個正面、9 個負面、3 個中立事件。
+- 三款正式小遊戲為記憶大師、彈珠台、棒球九宮格；皆共用 `{ success: boolean }` 合約與正式第 13 張取得牌流程。
+- 單局結算提供倍率前分數明細、下注結果與實際總分變化；總分最低為 0。
+- GAME OVER 顯示最終分數與 15 個可取得稱號。
 
-## 本機執行
+完整規則以 [GAME_SPEC.md](GAME_SPEC.md) 為準，程式結構見 [docs/FINAL_ARCHITECTURE.md](docs/FINAL_ARCHITECTURE.md)，封存狀態見 [docs/FINAL_STATUS.md](docs/FINAL_STATUS.md)。
 
-直接以瀏覽器開啟 `index.html` 即可遊玩。若瀏覽器對本機檔案有限制，也可在專案根目錄啟動靜態伺服器，例如：
+## 執行方式
+
+直接以瀏覽器開啟 `index.html` 即可。若瀏覽器限制本機資源載入，可在專案根目錄啟動靜態伺服器：
 
 ```powershell
 python -m http.server 8000
@@ -40,41 +35,72 @@ python -m http.server 8000
 
 再開啟 `http://localhost:8000/`。
 
-## 專案檔案
+## 遊戲流程
 
-- `index.html`：遊戲頁面與 Modal 結構。
-- `style.css`：桌面、手機、棋盤、事件及動畫樣式。
-- `game-config.js`：Gameplay 的分數、局中事件、正式場中事件與 Item 設定。
-- `game.js`：牌組、狀態機、分數結算、事件、Item、補牌及統計邏輯。
-- `GAME_SPEC.md`：MoMaJohnPlus 最新遊戲設計規格與各階段邊界。
-- `IMPLEMENTATION_PLAN.md`：MoMaJohnPlus 分階段開發計畫。
-- [`docs/legacy/`](docs/legacy/)：完整保留的原始 MoMaJohn 規格、數值、更新與工作紀錄。
+1. 輸入姓名並開始遊戲。
+2. 在開局準備選擇事件或略過，再選擇槓桿。
+3. Commit 後消耗對應機會，依固定的本局設定進入摸牌。
+4. 第 13 張可挑戰小遊戲或直接摸牌；成功可從合法剩餘牌自選，失敗則回到普通隨機摸牌。
+5. 正常 RNG 抽到 Event A／B 時觸發局中事件；小遊戲獎勵自選 Event A／B 則只作為正式取得牌，不觸發事件。
+6. 正式摸牌結束時若仍聽牌，進入三選補牌；命中可增加 1 次機會，上限仍為 6。
+7. 單局結算後進入下一局；機會耗盡或事件提前結束全場時顯示最終分數與稱號。
 
-## Legacy Gameplay baseline
+## 專案結構
 
-目前可執行版本已完成 Phase 1-A～1-E 與 Phase 2 Mini-game Framework：玩家每局先從三張正式場中事件選一張並選擇槓桿，按下「開牌局」後才 Commit、扣除局數，依 committed config 進行 14／15／16 張正式摸牌。正式第 13 張會提供三款小遊戲之一；記憶大師與彈珠台已使用正式 Module，小遊戲只回傳 success／failure，成功使用 Shared Tile Picker 自選牌，失敗由玩家在 Result Card 確認普通摸牌，直接摸牌則立即使用普通 RNG，最後統一經正式取得牌流程。前 5 次正式摸牌內首次形成聽牌的天聽獎勵為 +100 rawPoints，照既有規則受本局倍率影響。
+| 路徑 | 用途 |
+|---|---|
+| `index.html` | 主遊戲 DOM、Modal 與腳本載入順序 |
+| `style.css` | 主遊戲桌面／手機版面、棋盤與互動樣式 |
+| `game-config.js` | 場中事件、道具、運勢倍率與局中事件定義 |
+| `game.js` | 狀態機、正式取得牌、計分、事件、道具、補牌、結算與稱號 |
+| `minigames/` | 三款小遊戲的正式 Module、共用 CSS 與獨立 Playground |
+| `tests/` | 各階段規則、結算與三款小遊戲的 deterministic regression tests |
+| `GAME_SPEC.md` | 現行遊戲規格唯一文件來源 |
+| `IMPLEMENTATION_PLAN.md` | 已完成的實作沿革與維護原則 |
+| `docs/FINAL_ARCHITECTURE.md` | 主程式與小遊戲的最終技術架構 |
+| `docs/REUSE_GUIDE.md` | 擴充、抽取與重用指引 |
+| `docs/FINAL_STATUS.md` | 封存版本範圍、驗證與限制 |
+| `docs/legacy/` | 原始 MoMaJohn 歷史文件，僅供考古，不是現行規格來源 |
 
-原始文件：
+## 小遊戲開發模式
 
-- [技術與功能規格](docs/legacy/TECHNICAL_FUNCTIONAL_SPEC.md)
-- [事件、下注與點數討論稿](docs/legacy/EVENTS_BETS_SCORING.md)
-- [更新說明](docs/legacy/RELEASE_NOTES.md)
-- [工作報告](docs/legacy/WORK_REPORT.md)
+每款小遊戲採 `Module + Standalone Playground + Main Integration`：
 
-## 部署
+- `minigames/<name>.js` 是玩法與 lifecycle 的唯一正式來源。
+- `minigames/<name>.html` 只提供反覆測試的獨立外殼，不複製玩法。
+- 主程式呼叫 `start({ container, onComplete, random, scheduler })`，小遊戲只回傳 `{ success }`。
+- SUCCESS、FAILURE、Shared Tile Picker 與正式第 13 張取得牌均由主程式負責。
+- Controller 必須提供 `destroy()`，清理 Pointer listeners、Timer、RAF 與執行狀態。
 
-本專案可直接使用 GitHub Pages：Repository 的 **Settings → Pages**，將來源設為 **Deploy from a branch**，選擇 `main` 與根目錄 `/ (root)` 後儲存。
+既有 Module：
 
-## Phase 1-E 規則與驗證
+- `MemoryMaster`：四主題、中文／English 50／50、每主題 12 抽 4、5 秒記憶、一次猜牌。
+- `PaJuR`：12 槽、5 GREEN／7 RED、Pointer 下拉蓄力、導引發射軌與真實落槽判定。
+- `Baseball9`：九宮格 5 GREEN／4 RED、Pointer 投球、2.5D 飛行、實際落點與破板效果。
 
-場中三選一採不放回加權抽取：9 個 BET、6 個 SPECIAL 各權重 1，唯一 ITEM 事件權重為 `ITEM_DEFINITIONS.length = 10`，總權重 25；每組 Event ID 唯一，Skip 不入池。
-
-大吉 +2、小吉 +1、小凶 -1、大凶 -2 相加為 fortuneScore，可抵銷與疊加；套用倍率時 Clamp 到 ±3。每次局中抽取使用 `baseWeight × fortuneModifier`，不改寫 base weight；NEUTRAL 倍率永遠為 1。完整 V1 表見 GAME_SPEC。護身符只阻擋第一個 NEGATIVE 局中事件並消耗一個，包含爆炸、停電；不影響 BET、槓桿或場中特殊。Restart 依目前 inventory 重算運勢，已消耗護身符不恢復。
+## 測試
 
 ```powershell
 node tests/phase1c.test.js
 node tests/phase1d.test.js
 node tests/phase1e.test.js
+node tests/phase2.test.js
+node tests/phase3a.test.js
+node tests/settlement-achievements.test.js
+node tests/pajur.test.js
+node tests/baseball9.test.js
 ```
 
-Phase 1-E 測試使用固定 RNG、權重區間與受控事件，不以真正亂數統計決定 PASS。
+語法檢查可對 `game.js`、`game-config.js`、三個小遊戲 Module 與所有測試檔執行 `node --check`。提交前另執行 `git diff --check`。
+
+## 部署
+
+本專案為純靜態網站，可由任意靜態主機部署。使用 GitHub Pages 時，在 Repository 的 **Settings → Pages** 選擇 **Deploy from a branch**、`main` 與 `/ (root)`。
+
+## Development Status
+
+Gameplay development 已封板。後續若重啟開發，應視為新的衍生週期：先建立測試基線，再以最小變更調整，不把過去未採用的構想當成欠缺功能。本 Repository 特別適合參考 PRE_ROUND transaction、資料驅動事件池、三格 Item inventory、小遊戲 Contract、Shared Tile Picker、Mobile overlay 與 deterministic testing。
+
+## 文件優先順序
+
+現行規則與程式碼衝突時，先以可執行程式與 regression tests 判定，再同步修正 `GAME_SPEC.md`。`docs/legacy/` 完整保留原始 MoMaJohn 的歷史討論、舊數值與舊工作紀錄，不應用來推導 MoMaJohnPlus 的現行行為。

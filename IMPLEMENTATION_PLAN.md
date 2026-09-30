@@ -1,103 +1,152 @@
-# MoMaJohnPlus Implementation Plan
+# MoMaJohnPlus 實作沿革與維護計畫
 
-本計畫描述 MoMaJohnPlus 的分階段導入順序。Phase 0、Phase 1-A、Phase 1-B、Phase 1-C、Phase 1-D 與 Phase 1-E 已完成；Phase 2 以後均為 **Planned / 尚未實作**。
+> 封存日期：2026-09-30
+> 狀態：本階段開發完成。本文件保留已落地的工程順序、決策與後續維護界線，不作為待辦清單。
 
-## Phase 0 — Project Identity & Documentation Baseline
+## 1. 基線建立
 
-本輪工作，只建立新專案身份與文件：
+### Phase 0 — Repository Baseline
 
-- 將專案對外身份改為 MoMaJohnPlus。
-- 保留原始 MoMaJohn Gameplay 作為可執行 baseline。
-- 將原始規格、更新與工作紀錄移至 `docs/legacy/` 完整保存。
-- 建立最新遊戲規格與分階段開發計畫。
-- 將 Git remote 切換到新的 MoMaJohnPlus Repository。
+- 從原始 MoMaJohn 建立獨立的 MoMaJohnPlus Repository。
+- 保留原始 Repository，不回寫舊專案。
+- 建立本機與 GitHub `main` 同步基線。
 
-Phase 0 不修改 Gameplay 行為。
+### Phase 1-A — Plus 基礎規則
 
-## Phase 1 — MoMaJohnPlus Core Gameplay Framework
+- 收斂為單一 MoMaJohnPlus 模式。
+- 以 15 張作為標準正式牌數。
+- 統一玩家可見「分數」用語。
+- 移除正式玩法中的測試姓名與固定作弊流程。
+- 海底撈月改由本局動態最後一張判定。
 
-### Phase 1-A — Plus 基礎規則轉換（已完成）
+### Phase 1-B — 開局 Commit Transaction
 
-- 將玩家可見的「點數」統一為「分數」。
-- 移除標準／狂歡模式選擇，改為單一 MoMaJohnPlus 模式。
-- 建立每局 `formalDrawCount = 15` 的正式牌數來源。
-- 讓海底撈月依本局最後一張正式牌判定。
-- 移除 `TEST1129` 特殊名稱及 deterministic 測試劇本。
-- 保留原始摸牌、連線、聽牌、事件、槓桿、下注、補牌與結算流程。
+- 建立 `PRE_ROUND`、temporary selection 與一次性 Commit。
+- 將場中事件與槓桿鎖入 immutable `round.config`。
+- 消耗機會從第一次摸牌移到 Commit。
+- Restart 保留已 Commit 設定且不重複扣機會。
 
-### Phase 1-B — 開局準備與 Commit Framework（已完成）
+### Phase 1-C — 正式事件框架
 
-- 新增每局必經的 `PRE_ROUND`。
-- 建立場中事件三選一 Framework；目前三張事件皆為 Temporary / Phase 1-B only Placeholder。
-- 將 ×1／×2／×3 槓桿移入開局準備畫面。
-- 分離 temporary selection 與 committed `round.config`。
-- 將局數消耗移至「開牌局」Commit Point，並防止 double commit。
-- 讓 Restart Current Round 沿用 committed config 且不重扣局數。
-- 將舊下注 UI 移出正常 Gameplay；暫時保留未使用的 settlement helper。
+- 建立 9 個 BET 與正式 SPECIAL 定義。
+- 以 Event A／B 驅動局中事件。
+- 支援 14／15／16 張動態正式牌數。
+- 建立安全總分更新入口，允許本局負分但總分 floor 0。
+- 將下注改為單一場中事件，局末獨立結算且不乘倍率。
 
-### Phase 1-C — 正式場中事件與動態牌數（已完成）
+### Phase 1-D — 道具系統
 
-- 導入正式場中下注事件。
-- 導入正式場中特殊事件。
-- 將「老闆加碼」移出局中事件並納入場中特殊事件。
-- 支援 14～16 張動態牌數。
-- 接入正式場中事件 Pool 抽取與效果 Commit。
-- 「珠珠寶貝」與「當地球隊贏球」在此階段只 Commit Phase 2 所需 Constraint；彈珠台已於後續 Standalone 完成後正式接入主程式。
-- 舊 Checkbox 多重下注及其專用 helper 已退休，統計概念由單一場中下注事件延續。
+- 建立 3 格 inventory 與 10 個道具。
+- 完成神秘禮物 Reveal、滿格強制替換、跨局保留與新場重置。
+- 完成嗆司Maker、免洗護身符與口袋中／發／白。
+- 口袋系列最終規則為直接額外正式取得指定國字牌，同局可使用多件。
+- 建立道具／狀態視窗與已抽牌型 Quick Overview。
 
-### Phase 1-D — Item 系統（已完成）
+### Phase 1-E — 加權事件與防護
 
-- 建立三格 Item inventory、Commit 後抽取與滿格強制替換流程。
-- 加入專屬 Item Reveal，滿格時依序執行 Reveal → 強制 Replacement。
-- 導入 10 個既定 Item，並完成跨局保留與新場重置。
-- 接入嗆司Maker每局首次聽牌效果，以及三個口袋系列直接額外取得指定國字牌的主動效果。
-- 建立「道具 / 狀態」入口及按住「已抽牌型」即時總覽。
-- PRE_ROUND 可明確放棄場中事件，仍能獨立選擇合法槓桿，並建立 `NONE` config snapshot。
-- 籤詩局中事件機率及免洗護身符抵銷已於 Phase 1-E 完成。
+- 場中事件採不放回加權抽取。
+- 籤運勢按每次局中事件抽取時的當前 inventory 動態計算。
+- 正面、負面與中立事件分流；中立權重不受籤影響。
+- 免洗護身符在負面 handler 前攔截並消耗。
+- 補齊 deterministic weighted-selection 與 Restart regression。
 
-### Phase 1-E — 局中事件重整與 Regression（已完成，待人工 Playtest）
+## 2. 小遊戲框架與正式玩法
 
-- PRE_ROUND 採不放回加權抽取：BET 9、SPECIAL 6 各權重 1，唯一 ITEM 虛擬權重為 `ITEM_DEFINITIONS.length`（目前 10），Skip 不入池。
-- Fortune score：大吉 +2、小吉 +1、小凶 −1、大凶 −2，可抵銷與疊加；V1 倍率查表時 Clamp 到 ±3。
-- 每次局中事件抽取都從目前 inventory 計算 effectiveWeight；base weight 保持不變，NEUTRAL modifier 永遠為 1。
-- 免洗護身符在第一個 NEGATIVE handler 前攔截並消耗一個，包含瓦斯桶爆炸；停電歸為 NEGATIVE 並可攔截。
-- Restart 保留目前 inventory，不恢復已消耗護身符，運勢在下一次抽取時重新計算。
-- 完成局中事件、Restart、BONUS、GAME OVER 與 Item 交互 Regression，並新增固定 RNG 的 `tests/phase1e.test.js`。
+### Phase 2 — Challenge Contract
 
-## Phase 2 — Mini-game Framework & Integration
+- 在每局正式第 13 張建立唯一小遊戲 Opportunity。
+- 定義 DIRECT、SUCCESS、FAILURE 三條路徑並統一回到正式取得牌 pipeline。
+- SUCCESS 使用 Shared Tile Picker；可選普通牌及 Event A／B。
+- 自選事件牌只正式取得、不觸發局中事件；正常 RNG 事件牌維持原行為。
+- FAILURE 由玩家在結果卡確認後才普通 RNG 摸牌。
+- 建立唯讀棋盤／牌型 Overview 與完整 lifecycle cleanup。
 
-Completed：
+### Phase 3-A — 記憶大師
 
-- 每局只在正式第 13 張建立一次 Mini-game Opportunity。
-- 建立彈珠台、棒球九宮格、記憶大師三款 Registry Definition。
-- 小遊戲只回傳可測試的 `{ success }` Challenge Result；直接摸牌立即執行普通隨機摸牌，失敗則先顯示不可關閉的 Result Card，待玩家按「摸牌」才執行普通隨機摸牌。
-- 成功時使用 Shared Tile Picker 從合法 `remainingTiles` 自選牌；Picker Overview 以目前 Round State 渲染唯讀 6×6 小棋盤與 34 張普通牌，三條取得路徑最後都串接共用正式取得牌 Pipeline。
-- 小遊戲不提供分數、局數、倍率、道具或其他 Reward；真正玩法留待 Phase 3。
+- 完成四主題、雙語、每主題 12 抽 4、5 秒揭示與一次猜牌。
+- 完成答錯分段揭示與可清理 Timer。
+- 將玩法抽成 `MemoryMaster` Module，主程式與 Standalone 共用同一來源。
 
-## Phase 3 — Real Mini-games & Avatar
+### PaJuR — 彈珠台
 
-Phase 3-A Completed：
+- 完成 12 槽、5 GREEN／7 RED 的可注入隨機配置。
+- 完成 Pointer 蓄力、導引發射軌、物理碰撞、Anti-stuck 與真實落槽判定。
+- 完成 Standalone、Module、主程式 Integration 與 forced selection。
+- 封存經手機實機驗證的尺寸、軌道與 Power Indicator。
 
-- 正式完成「記憶大師」：4 個等權主題、中文／English 50／50、每類 12 抽 4、4 張牌及 5 秒記憶倒數。
-- 題目採 Instruction、大型 Emoji 與在地化名稱；猜錯先揭所選牌，1 秒後才揭正解，再依既有 Contract 回傳 FAILURE。
-- 玩家蓋牌後只猜一次；正確／錯誤只回傳 `{ success }`，由 Phase 2 Main Game Contract 接續 Shared Tile Picker 或 Failure Result Card。
-- 集中可注入 RNG、一次判定鎖及可清除 countdown/result timers；棒球九宮格也已完成相同的 lifecycle 與 cleanup contract。
-- 將記憶大師抽成 `minigames/memory-master.js` 正式共用 Module，並由主程式與 `memory-master.html` Standalone Playground 共用；Module 是玩法唯一來源，Standalone 是 Development／Playtest Shell，MoMaJohnPlus 是 Integration Shell。
-- 將已完成 Playtest 的 `minigames/pajur.js`／`pajur.css` 與 `minigames/baseball9.js`／`baseball9.css` 接入同一 Mini-game Contract；Standalone 與 Main Integration 共用同一 Module，珠珠寶貝與當地球隊贏球分別固定指定彈珠台與棒球九宮格。
-- 後續新小遊戲沿用 `Module + Standalone Playground + Main Integration`：先在 Standalone 完成玩法與節奏 Playtest，再接入 Registry 與 Phase 2 Contract，不建立大型抽象框架。
+### Baseball9 — 棒球九宮格
 
-Settlement & Achievement Update Completed：
+- 完成九宮格 5 GREEN／4 RED 隨機配置。
+- 完成 Pointer 投球、方向／距離／速度模型、2.5D 飛行與實際落點判定。
+- 完成棒球視覺、板面破裂／穿透效果、Outside miss 與 one-ball lock。
+- 完成 Standalone、Module、主程式 Integration 與 forced selection。
 
-- 建立 Round Score Breakdown，在正式得失分入口紀錄、同來源合併，並區分倍率項目與不吃倍率的 BET。
-- Round Result 改為固定最終變化、可捲動分數明細、固定目前總分與操作列；總分 floor 0 顯示實際變化。
-- 建立正式完成局快照、15 個 Achievement Definitions 與獨立 evaluator；GAME OVER 改為最終分數與可捲動稱號列表。
-- Restart 不寫入未完成局快照；新遊戲完整 reset Breakdown、完成局統計與當場稱號。
+## 3. 結算、稱號與 UI 完整化
 
-Planned / 尚未實作：
+### Settlement & Achievement V1
 
-- 大頭貼上傳與結算大頭貼。
-- 小遊戲大頭貼 Easter Egg。
-- 小遊戲輔助 Item。
-- 玩家操作取得麻將牌。
-- Playtest。
-- 依實際成功率重新平衡下注與事件。
+- 建立 Round Score Breakdown，區分受倍率與不受倍率來源。
+- 單局結果固定顯示本局實際變化、可捲動明細與目前總分。
+- 下注在 multiplier settlement 後獨立結算。
+- 建立正式完成局快照、15 個稱號定義、statistics builder 與 evaluator。
+- GAME OVER 改為最終分數與本場稱號。
+
+### Mobile / Gameplay Polish
+
+- 已抽牌型改為可捲動的 click-to-open overview。
+- 精簡開局準備資訊與事件卡層級。
+- 補牌結果移到牌堆上方並精簡文字。
+- 主操作、Modal、姓名輸入與手機資訊密度完成實機調整。
+- PaJuR 與 Baseball9 以 375×667 為主要手機驗收尺寸。
+
+### Finalization — Documentation / Archive
+
+- 狀態：COMPLETED。
+- 以現行程式與 regression tests 重新核對 README、遊戲規格與實作歷史。
+- 建立 Final Architecture、Reuse Guide 與 Final Status。
+- 將早期構想分類為已完成、被取代或未採用，不再表達成進行中的工作。
+- 保留 `docs/legacy/` 原貌，並明確降級為歷史參考。
+
+## 4. 測試演進
+
+正式 regression 分層如下：
+
+| 測試 | 保護範圍 |
+|---|---|
+| `phase1c.test.js` | 事件、下注、分數 floor、動態牌數與 Restart |
+| `phase1d.test.js` | inventory、道具、Quick Overview、口袋系列 |
+| `phase1e.test.js` | 加權抽取、籤、護身符與 Restart |
+| `phase2.test.js` | 第 13 張 contract、Shared Tile Picker 與三款 registry |
+| `phase3a.test.js` | 記憶大師玩法與 lifecycle |
+| `settlement-achievements.test.js` | 分數明細、結算與 15 個稱號 |
+| `pajur.test.js` | 彈珠台配置、物理 helpers、結果與 cleanup |
+| `baseball9.test.js` | 九宮格配置、投球、落點、結果與 cleanup |
+
+測試採可注入 RNG／scheduler 與 deterministic assertions，避免以機率統計作為 PASS 條件。UI 細節由 Browser QA 與手機 Playtest 補足。
+
+## 5. 已確立的維護原則
+
+1. `game-config.js` 保存資料定義；`game.js` 保存主遊戲 orchestration。
+2. 正式取得牌必須經共用 pipeline，不能由小遊戲或道具任意改寫總分與摸牌數。
+3. 總分變動统一經 floor-safe helper；BET 不可繞過 floor。
+4. 小遊戲只回傳 `{ success }`，不得直接給牌、分數、倍率、機會或道具。
+5. 新小遊戲先以正式 Module 建立 Standalone，再接入 Registry；禁止複製第二套玩法。
+6. Restart、離開 Modal、返回主選單及 GAME OVER 必須清理 Timer、RAF 與 Pointer listeners。
+7. 與行為相關的修改必須同步 deterministic test；純視覺修改至少執行 syntax 與直接相關 regression。
+8. 手機正式基準不可因局部修正而任意改動 PaJuR／Baseball9 host 尺寸。
+9. `docs/legacy/` 僅保存歷史，現行規格以 `GAME_SPEC.md` 與可執行 tests 為準。
+
+## 6. 封存後變更流程
+
+若未來重新啟動開發：
+
+1. 先讀 `docs/FINAL_STATUS.md`、`GAME_SPEC.md` 與 `docs/FINAL_ARCHITECTURE.md`。
+2. 為變更建立清楚的規則邊界與相容性目標。
+3. 先補或調整 deterministic test，再作最小實作。
+4. 對 375×667 與 Desktop 做與變更範圍相稱的 Browser QA。
+5. 更新正式規格與架構文件；不要修改 legacy 封存來「修正」現況。
+6. 完成全套 regression、syntax checks 與 `git diff --check` 後再提交。
+
+## 7. 非承諾項目
+
+大頭貼、小遊戲大頭貼彩蛋、小遊戲專用輔助道具及其他擴充構想未納入本封存版本的正式範圍。它們不是既有系統的缺口，也不代表排定中的交付承諾；若未來採用，應以新的設計與測試週期處理。
