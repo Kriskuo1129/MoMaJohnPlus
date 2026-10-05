@@ -63,6 +63,8 @@ const context = vm.createContext({
   performance: { now: () => 0 },
   requestAnimationFrame() {},
   setTimeout() {}, clearTimeout() {},
+  AbortController,
+  fetch: async () => ({ ok: true, status: 200, json: async () => ({ success: true }) }),
   Math, Object, Array, Set, Map, String, Number, Boolean
 });
 const root = path.resolve(__dirname, "..");

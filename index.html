@@ -19,6 +19,7 @@
       <div class="mode-options">
         <button id="start-game-button" type="button"><b>開始遊戲</b><span>每局 15 張・事件牌・連線與牌型</span><small>輸入名稱後直接開始摸麻將Plus</small></button>
       </div>
+      <button id="start-leaderboard-button" class="leaderboard-entry-button" type="button">🏆 排行榜</button>
     </div>
   </section>
   <main id="game-shell" class="game-shell hidden">
@@ -86,6 +87,16 @@
   </div></div>
 
   <div id="toast-stack" class="toast-stack" aria-live="polite"></div>
+  <div id="leaderboard-overlay" class="leaderboard-overlay" aria-hidden="true">
+    <section class="leaderboard-card" role="dialog" aria-modal="true" aria-labelledby="leaderboard-title">
+      <header class="leaderboard-header"><p>NIGHT MARKET TOP 20</p><h2 id="leaderboard-title">🏆 排行榜</h2></header>
+      <div id="leaderboard-content" class="leaderboard-content" aria-live="polite"></div>
+      <footer class="leaderboard-footer">
+        <button id="leaderboard-retry" class="secondary hidden" type="button">重新整理</button>
+        <button id="leaderboard-close" type="button">關閉</button>
+      </footer>
+    </section>
+  </div>
   <div id="modal" class="modal" aria-hidden="true">
     <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
       <header class="modal-header"><div id="modal-icon" class="modal-icon">🀄</div><p id="modal-kicker" class="modal-kicker"></p><h2 id="modal-title">本局結束</h2></header>

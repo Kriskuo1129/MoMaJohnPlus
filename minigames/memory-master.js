@@ -2,7 +2,7 @@
   "use strict";
 
   const REVEAL_SECONDS = 5;
-  const CARD_COUNT = 4;
+  const CARD_COUNT = 6;
   const WRONG_REVEAL_DELAY_MS = 1000;
   const RESULT_DELAY_MS = 800;
 

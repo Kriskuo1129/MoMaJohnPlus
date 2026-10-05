@@ -7,6 +7,9 @@
  * weight 越大越常出現；enabled: false 的事件不會被抽中，也不列入機率計算。
  */
 
+const LEADERBOARD_API_URL = "https://script.google.com/macros/s/AKfycbxotHKwUZXvENMdDFwFi4zUjjcHx3g6SV9oI0EfeaNGZLs0A_Ch5n5bGfDBZfTmZUha/exec";
+const LEADERBOARD_REQUEST_TIMEOUT_MS = 10000;
+
 const SCORE_CONFIG = Object.freeze({
   line: Object.freeze({ first: 30, second: 60, thirdPlus: 90 }),
   // 花色數值是「該門目前總獎勵值」，不是每個 milestone 的額外加分。

@@ -32,7 +32,8 @@ const elements = Object.fromEntries([
   "final-waiting-overlay", "final-waiting-title", "final-waiting-missing",
   "bonus-modal", "bonus-waiting", "bonus-instruction", "bonus-count", "bonus-grid", "bonus-result",
   "message",
-  "toast-stack", "modal", "modal-icon", "modal-kicker", "modal-title", "modal-body", "modal-actions"
+  "toast-stack", "leaderboard-overlay", "leaderboard-content", "leaderboard-retry", "leaderboard-close",
+  "modal", "modal-icon", "modal-kicker", "modal-title", "modal-body", "modal-actions"
 ].map(id => [id.replace(/-([a-z])/g, (_, c) => c.toUpperCase()), document.querySelector(`#${id}`)]));
 
 function buildLines() {
@@ -54,6 +55,7 @@ function freshGameState(playerName = "") {
     playerName, state: GAME_STATES.READY, score: 0, totalLines: 0, items: [],
     totalAttemptsGranted: RULES.initialAttempts, attemptsConsumed: 0, roundsPlayed: 0,
     achievementCount: 0, round: null, busy: false, pendingSpecial: null, uiOverlayOpen: false,
+    leaderboardSubmitted: false, leaderboardSubmissionStatus: "idle",
     stats: {
       totalScore: 0, totalLines: 0, roundsPlayed: 0, totalRoundCost: 0,
       multiplier1Count: 0, multiplier2Count: 0, multiplier3Count: 0,
@@ -1503,8 +1505,9 @@ function showGameOver() {
   openModal({
     icon: "🏆", kicker: "", title: "今晚收攤啦！",
     body: buildScoreReport(),
-    actions: [{ label: "再玩一場", action: resetGame }, { label: "回主選單", className: "secondary", action: returnToMainMenu }]
+    actions: [{ label: "🏆 排行榜", className: "secondary", action: openLeaderboardFromGameOver }, { label: "再玩一場", action: resetGame }, { label: "回主選單", className: "secondary", action: returnToMainMenu }]
   });
+  void submitGameOverScore();
 }
 
 function recordRoundHighs() {
@@ -1564,7 +1567,127 @@ function buildScoreReport() {
   const list = earned.length
     ? earned.map(achievement => `<article class="achievement-card"><b>🏆 ${escapeHtml(achievement.name)}</b><p>${escapeHtml(achievement.description)}</p></article>`).join("")
     : '<p class="achievement-empty">這場沒有取得稱號</p>';
-  return `<div class="game-over-report"><section class="game-over-final"><strong class="game-over-score">${game.score}</strong><small>最終分數</small></section><section class="achievement-report"><h3>本場獲得稱號</h3><div class="achievement-list">${list}</div></section></div>`;
+  return `<div class="game-over-report"><section class="game-over-final"><strong class="game-over-score">${game.score}</strong><small>最終分數</small><p class="leaderboard-submit-status" data-leaderboard-submit-status>${leaderboardSubmissionLabel()}</p></section><section class="achievement-report"><h3>本場獲得稱號</h3><div class="achievement-list">${list}</div></section></div>`;
+}
+
+function leaderboardSubmissionLabel() {
+  return ({ loading: "成績登錄中…", success: "成績已登錄排行榜！", failure: "排行榜上傳失敗" })[game.leaderboardSubmissionStatus] || "";
+}
+
+function updateLeaderboardSubmissionStatus() {
+  const status = elements.modalBody.querySelector("[data-leaderboard-submit-status]");
+  if (status) status.textContent = leaderboardSubmissionLabel();
+}
+
+async function leaderboardRequest(options = {}) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), LEADERBOARD_REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(LEADERBOARD_API_URL, { ...options, signal: controller.signal });
+    if (!response.ok) throw new Error(`Leaderboard HTTP ${response.status}`);
+    const data = await response.json();
+    if (!data || data.success !== true) throw new Error(data?.error || "Leaderboard API error");
+    return data;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+async function submitGameOverScore() {
+  if (game.leaderboardSubmitted) return;
+  game.leaderboardSubmitted = true;
+  game.leaderboardSubmissionStatus = "loading";
+  updateLeaderboardSubmissionStatus();
+  try {
+    await leaderboardRequest({
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ name: game.playerName || EMPTY_PLAYER_DISPLAY_NAME, score: game.score })
+    });
+    game.leaderboardSubmissionStatus = "success";
+  } catch (error) {
+    game.leaderboardSubmissionStatus = "failure";
+    console.warn("Leaderboard score submission failed.", error);
+  }
+  updateLeaderboardSubmissionStatus();
+}
+
+function openLeaderboardFromGameOver() {
+  openLeaderboard(showGameOver);
+}
+
+let leaderboardCloseAction = null;
+
+function openLeaderboard(closeAction = null) {
+  leaderboardCloseAction = closeAction;
+  elements.leaderboardOverlay.classList.add("open");
+  elements.leaderboardOverlay.setAttribute("aria-hidden", "false");
+  renderLeaderboardMessage("排行榜載入中…", false);
+  elements.leaderboardClose.focus();
+  void loadLeaderboard();
+}
+
+async function loadLeaderboard() {
+  renderLeaderboardMessage("排行榜載入中…", false);
+  try {
+    const data = await leaderboardRequest();
+    renderLeaderboard(data.ranking);
+  } catch (error) {
+    console.warn("Leaderboard fetch failed.", error);
+    renderLeaderboardMessage("排行榜讀取失敗", true);
+  }
+}
+
+function renderLeaderboardMessage(message, canRetry) {
+  const status = document.createElement("p");
+  status.className = "leaderboard-message";
+  status.textContent = message;
+  elements.leaderboardContent.replaceChildren(status);
+  elements.leaderboardRetry.classList.toggle("hidden", !canRetry);
+}
+
+function renderLeaderboard(ranking) {
+  const entries = Array.isArray(ranking) ? ranking.slice(0, 20) : [];
+  elements.leaderboardRetry.classList.add("hidden");
+  if (!entries.length) {
+    renderLeaderboardMessage("目前還沒有排行榜紀錄", false);
+    return;
+  }
+
+  const list = document.createElement("div");
+  list.className = "leaderboard-list";
+  const heading = document.createElement("div");
+  heading.className = "leaderboard-row leaderboard-column-heading";
+  ["排名", "玩家", "分數"].forEach(label => {
+    const cell = document.createElement("span");
+    cell.textContent = label;
+    heading.append(cell);
+  });
+  list.append(heading);
+
+  entries.forEach((entry, index) => {
+    const rank = Number.isInteger(entry.rank) && entry.rank > 0 ? entry.rank : index + 1;
+    const row = document.createElement("div");
+    row.className = `leaderboard-row${rank <= 3 ? ` leaderboard-top-${rank}` : ""}`;
+    const rankCell = document.createElement("strong");
+    rankCell.textContent = ["🥇", "🥈", "🥉"][rank - 1] || String(rank);
+    const nameCell = document.createElement("span");
+    nameCell.textContent = String(entry.name ?? "");
+    const scoreCell = document.createElement("strong");
+    scoreCell.textContent = String(entry.score ?? "");
+    row.append(rankCell, nameCell, scoreCell);
+    list.append(row);
+  });
+
+  elements.leaderboardContent.replaceChildren(list);
+}
+
+function closeLeaderboard() {
+  elements.leaderboardOverlay.classList.remove("open");
+  elements.leaderboardOverlay.setAttribute("aria-hidden", "true");
+  const closeAction = leaderboardCloseAction;
+  leaderboardCloseAction = null;
+  if (closeAction) closeAction();
 }
 
 function formatSignedScore(value) { return value > 0 ? `+${value}` : String(value); }
@@ -1892,6 +2015,9 @@ elements.preRoundSkipButton.addEventListener("click", selectPreRoundSkip);
 elements.tilePeekButton.addEventListener("click", showTileOverview);
 elements.tileOverviewClose.addEventListener("click", hideTileOverview);
 document.querySelector("#start-game-button").addEventListener("click", startGame);
+document.querySelector("#start-leaderboard-button").addEventListener("click", () => openLeaderboard());
+elements.leaderboardRetry.addEventListener("click", loadLeaderboard);
+elements.leaderboardClose.addEventListener("click", closeLeaderboard);
 elements.playerNameInput.addEventListener("input", () => {
   elements.playerNameError.textContent = "";
   const playerName = elements.playerNameInput.value.trim().slice(0, 12);
