@@ -183,7 +183,7 @@ function renderPreRound() {
     const button = document.createElement("button");
     button.type = "button";
     const selected = categoryMode ? eventSelectionType === "CATEGORY" && game.round.preRound.selectedCategoryId === event.id : eventSelectionType === "EVENT" && selectedEventId === event.id;
-    button.className = `pre-round-event-card pre-round-event-${event.type.toLowerCase()}${selected ? " selected" : ""}`;
+    button.className = `pre-round-event-card ${categoryMode ? "pre-round-category-card" : `pre-round-event-${event.type.toLowerCase()}`}${selected ? " selected" : ""}`;
     if (categoryMode) button.dataset.categoryId = event.id;
     else button.dataset.eventId = event.id;
     button.setAttribute("aria-pressed", String(selected));

@@ -76,11 +76,16 @@ const PRE_ROUND_MODE_CONFIG = Object.freeze({
   production: Object.freeze({ selection: "CONCRETE_OPTIONS", overrides: Object.freeze({}) }),
   experimental: Object.freeze({
     selection: "FIXED_CATEGORIES",
-    overrides: Object.freeze({}),
+    overrides: Object.freeze({
+      "believe-guoju": Object.freeze({ reward: 50, penalty: 30 }),
+      "ever-waiting": Object.freeze({ reward: 20, penalty: 10 }),
+      "complete-line": Object.freeze({ reward: 30, penalty: 15 }),
+      "stop-at-waiting": Object.freeze({ reward: 20, penalty: 10 })
+    }),
     categories: Object.freeze([
-      Object.freeze({ id: "item", title: "獲得道具", description: "隨機獲得一個道具", type: "ITEM", eventIds: Object.freeze(["mystery-gift"]) }),
-      Object.freeze({ id: "chance", title: "機會", description: "隨機抽取一個機會事件", type: "BET", eventIds: Object.freeze(["believe-guoju", "ever-waiting", "complete-line", "stop-at-waiting"]) }),
-      Object.freeze({ id: "destiny", title: "命運", description: "隨機抽取一個命運事件", type: "SPECIAL", eventIds: Object.freeze(["rock-paper-scissors", "more-tiles", "boss-leverage"]) })
+      Object.freeze({ id: "item", title: "獲得道具", description: "隨機取得一件神秘道具，你敢拿嗎？", type: "ITEM", eventIds: Object.freeze(["mystery-gift"]) }),
+      Object.freeze({ id: "chance", title: "機會", description: "一個大型投資的機會，你敢拚嗎？", type: "BET", eventIds: Object.freeze(["believe-guoju", "ever-waiting", "complete-line", "stop-at-waiting"]) }),
+      Object.freeze({ id: "destiny", title: "命運", description: "改變大局的事件，你敢賭嗎？", type: "SPECIAL", eventIds: Object.freeze(["rock-paper-scissors", "more-tiles", "boss-leverage"]) })
     ])
   })
 });

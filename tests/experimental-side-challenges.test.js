@@ -53,6 +53,8 @@ globalThis.sideChallengeTest = {
     return { opened, body, before, after: { selection: game.round.preRound.eventSelectionType, leverage: game.round.preRound.selectedLeverage, items: game.items.slice(), rounds: game.roundsPlayed }, state: game.state };
   },
   preRoundOptions(mode) { game = freshGameState("TEST", mode); game.round = createRound(); return game.round.preRound.eventOptions.map(option => ({ id: option.id, title: option.title, type: option.type })); },
+  categoryDescriptions() { return PRE_ROUND_MODE_CONFIG.experimental.categories.map(category => ({ id: category.id, description: category.description })); },
+  categoryClasses(selectedId = null) { this.setupCategory(); renderPreRound(); if (selectedId) selectAdvancedPreRoundCategory(selectedId); return elements.preRoundEventOptions.children.map(button => button.className); },
   categoryPool(categoryId) { return getAdvancedPreRoundCategoryPool(categoryId).map(event => event.id); },
   setupCategory(items = []) {
     game = freshGameState("TEST", GAME_MODES.EXPERIMENTAL); game.items = items.slice(); game.round = createRound(); game.state = GAME_STATES.PRE_ROUND;
@@ -73,6 +75,25 @@ globalThis.sideChallengeTest = {
     };
     const source = PRE_ROUND_EVENT_DEFINITIONS.find(event => event.id === "believe-guoju");
     return { source: source.reward, production: resolvePreRoundEventForMode(source, "production", configs).reward, experimental: resolvePreRoundEventForMode(source, "experimental", configs).reward };
+  },
+  opportunityBalance(mode) {
+    return ["believe-guoju", "ever-waiting", "complete-line", "stop-at-waiting"].map(id => {
+      const source = PRE_ROUND_EVENT_DEFINITIONS.find(event => event.id === id);
+      const event = resolvePreRoundEventForMode(source, mode);
+      return { id, reward: event.reward, penalty: event.penalty };
+    });
+  },
+  settleOpportunity(mode, id, won, multiplier = 1) {
+    game = freshGameState("TEST", mode); game.score = 1000; game.round = createRound(15, []); game.round.finalMultiplier = multiplier;
+    const source = PRE_ROUND_EVENT_DEFINITIONS.find(event => event.id === id);
+    const event = resolvePreRoundEventForMode(source, mode);
+    game.round.config = { activeBetId: id, eventConfig: event };
+    if (won && event.effectKey === "REQUIRE_TILES") event.tileIds.slice(0, event.requiredCount ?? event.tileIds.length).forEach(tileId => game.round.drawn.add(tileId));
+    if (won && event.effectKey === "EVER_WAITED") game.round.everWaited = true;
+    if (won && event.effectKey === "MIN_LINES") game.round.roundLines = event.minimum;
+    if (won && event.effectKey === "UNFINISHED_WAITING_LINE") game.round.everWaitingLines.add("row-0");
+    const result = settleBets()[0];
+    return { points: result.points, score: game.score, breakdown: game.round.scoreBreakdown[0] };
   }
 };`;
 vm.runInContext(source, context, { filename: "experimental-side-challenges-bundle.js" });
@@ -145,6 +166,17 @@ assert.deepEqual(plain(api.preRoundOptions("experimental")), [
   { id: "chance", title: "機會", type: "BET" },
   { id: "destiny", title: "命運", type: "SPECIAL" }
 ]);
+assert.deepEqual(plain(api.categoryDescriptions()), [
+  { id: "item", description: "隨機取得一件神秘道具，你敢拿嗎？" },
+  { id: "chance", description: "一個大型投資的機會，你敢拚嗎？" },
+  { id: "destiny", description: "改變大局的事件，你敢賭嗎？" }
+]);
+assert.deepEqual(plain(api.categoryClasses()), ["pre-round-event-card pre-round-category-card", "pre-round-event-card pre-round-category-card", "pre-round-event-card pre-round-category-card"]);
+for (const selectedId of ["item", "chance", "destiny"]) {
+  const classes = plain(api.categoryClasses(selectedId));
+  assert.equal(classes.filter(value => value.endsWith(" selected")).length, 1);
+  assert.equal(classes.every(value => value === "pre-round-event-card pre-round-category-card" || value === "pre-round-event-card pre-round-category-card selected"), true);
+}
 assert.deepEqual(plain(api.categoryPool("chance")), ["believe-guoju", "ever-waiting", "complete-line", "stop-at-waiting"]);
 assert.deepEqual(plain(api.categoryPool("destiny")), ["rock-paper-scissors", "more-tiles", "boss-leverage"]);
 assert.deepEqual(plain(api.categoryPool("item")), ["mystery-gift"]);
@@ -156,7 +188,7 @@ category = plain(api.chooseCategory("destiny")); assert.equal(category.selectedC
 category = plain(api.chooseCategory("item")); assert.equal(category.selectedCategoryId, "item"); assert.equal(category.pendingItemId, null); assert.equal(category.items.length, 0);
 category = plain(api.skipCategory()); assert.equal(category.selection, "SKIP"); assert.equal(category.selectedCategoryId, null); assert.equal(category.items.length, 0);
 category = plain(api.chooseCategory("chance")); assert.equal(category.selectedCategoryId, "chance"); assert.equal(category.selectedEventId, null);
-let started = plain(api.startCategory([0.01])); assert.equal(started.started, true); assert.equal(started.calls, 1); assert.equal(started.selectedEventId, "believe-guoju"); assert.equal(started.categoryCommitted, true); assert.equal(started.state, "COMMITTING"); assert.equal(started.sideChallenge, null); assert.match(started.modal, /東南西北中發白取得其中 6 張|成功 \+30/);
+let started = plain(api.startCategory([0.01])); assert.equal(started.started, true); assert.equal(started.calls, 1); assert.equal(started.selectedEventId, "believe-guoju"); assert.equal(started.categoryCommitted, true); assert.equal(started.state, "COMMITTING"); assert.equal(started.sideChallenge, null); assert.match(started.modal, /東南西北中發白取得其中 6 張|成功 \+50／失敗 -30/);
 let confirmed = plain(api.confirmCategoryReveal()); assert.equal(confirmed.confirmed, true); assert.equal(confirmed.state, "DRAWING"); assert.equal(confirmed.config.eventId, "believe-guoju"); assert.ok(confirmed.sideChallenge, "small-task reveal starts only after category reveal confirmation"); assert.equal(confirmed.title, "小任務挑戰");
 
 api.setupCategory(); api.chooseCategory("destiny"); started = plain(api.startCategory([0.999])); assert.equal(started.selectedEventId, "boss-leverage"); assert.equal(started.calls, 1); confirmed = plain(api.confirmCategoryReveal()); assert.equal(confirmed.config.formalDrawCount, 14); assert.equal(confirmed.config.specialMultiplier, 2);
@@ -172,5 +204,18 @@ api.setupCategory(); api.skipCategory(); started = plain(api.startCategory([0.25
 api.setupCategory(["free-ticket"]); api.chooseCategory("chance"); const freeCategory = plain(api.freeCategory(true, [0.01])); assert.equal(freeCategory.beforeDecision.calls, 0); assert.equal(freeCategory.beforeDecision.committed, false); assert.equal(freeCategory.beforeDecision.eventId, null); assert.equal(freeCategory.calls, 1); assert.equal(freeCategory.selectedEventId, "believe-guoju"); assert.equal(freeCategory.state, "COMMITTING");
 api.setupCategory(["free-ticket"]); api.chooseCategory("chance"); const declinedFreeCategory = plain(api.freeCategory(false, [0.01])); assert.equal(declinedFreeCategory.beforeDecision.calls, 0); assert.equal(declinedFreeCategory.calls, 1); assert.equal(declinedFreeCategory.selectedEventId, "believe-guoju");
 assert.deepEqual(plain(api.modeOverrides()), { source: 30, production: 31, experimental: 99 }, "mode overrides remain isolated from shared definitions");
+assert.deepEqual(plain(api.opportunityBalance("production")), [
+  { id: "believe-guoju", reward: 30, penalty: 30 }, { id: "ever-waiting", reward: 5, penalty: 5 },
+  { id: "complete-line", reward: 15, penalty: 5 }, { id: "stop-at-waiting", reward: 5, penalty: 5 }
+]);
+assert.deepEqual(plain(api.opportunityBalance("experimental")), [
+  { id: "believe-guoju", reward: 50, penalty: 30 }, { id: "ever-waiting", reward: 20, penalty: 10 },
+  { id: "complete-line", reward: 30, penalty: 15 }, { id: "stop-at-waiting", reward: 20, penalty: 10 }
+]);
+const x6Expected = { "believe-guoju": [300, -180], "ever-waiting": [120, -60], "complete-line": [180, -90], "stop-at-waiting": [120, -60] };
+for (const [id, [reward, penalty]] of Object.entries(x6Expected)) {
+  assert.equal(api.settleOpportunity("experimental", id, true, 6).points, reward);
+  assert.equal(api.settleOpportunity("experimental", id, false, 6).points, penalty);
+}
 
 console.log("Experimental side challenge tests: PASS");
