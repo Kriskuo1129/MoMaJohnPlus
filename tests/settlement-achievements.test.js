@@ -44,8 +44,11 @@ const api = context.settlementTest;
 
 function achievementStats(overrides = {}) {
   return {
+    mode: "production",
     completedRounds: 0, waitingRounds: 0, totalLines: 0, betsPlaced: 0, betsWon: 0, betsLost: 0,
     lastTileFirstLineCount: 0, earlyWaitingCount: 0, activeItemUses: 0,
+    miniGameInvitations: 0, miniGameParticipated: 0, miniGameSuccesses: 0,
+    pajurSuccesses: 0, baseballSuccesses: 0, memorySuccesses: 0,
     everyRoundRed: false, everyRoundGreen: false, everyRoundWhite: false,
     wanTiles: 0, tongTiles: 0, suoTiles: 0, windTiles: 0, ...overrides
   };
@@ -72,7 +75,7 @@ const earned = overrides => api.evaluate(achievementStats(overrides));
   api.add(5, { key: "chance-maker", label: "嗆司Maker" }); assert.equal(api.restartRoundData().length, 0);
   assert.equal(floorGame.stats.activeItemUses, 0);
 
-  assert.equal(api.definitions.length, 15);
+  assert.equal(api.definitions.length, 19);
   assert.equal(earned({ completedRounds: 6, waitingRounds: 2 }).includes("chanceMaker"), false);
   assert.equal(earned({ completedRounds: 6, waitingRounds: 3 }).includes("chanceMaker"), true);
   assert.equal(earned({ completedRounds: 5, waitingRounds: 2 }).includes("chanceMaker"), false);
@@ -97,6 +100,21 @@ const earned = overrides => api.evaluate(achievementStats(overrides));
     assert.equal(earned({ [key]: 29 }).includes(id), false); assert.equal(earned({ [key]: 30 }).includes(id), true);
   }
   assert.equal(earned({ windTiles: 9 }).includes("windMaster"), false); assert.equal(earned({ windTiles: 10 }).includes("windMaster"), true);
+
+  const experimentalSweep = earned({ mode: "experimental", miniGameInvitations: 5, miniGameParticipated: 5, miniGameSuccesses: 5 });
+  assert.ok(experimentalSweep.includes("gameKing"));
+  assert.equal(earned({ mode: "experimental", miniGameInvitations: 5, miniGameParticipated: 4, miniGameSuccesses: 4 }).includes("gameKing"), false, "a skip invalidates Game King");
+  assert.equal(earned({ mode: "experimental", miniGameInvitations: 5, miniGameParticipated: 5, miniGameSuccesses: 4 }).includes("gameKing"), false, "a failure invalidates Game King");
+  assert.equal(earned({ mode: "experimental", miniGameInvitations: 7, miniGameParticipated: 7, miniGameSuccesses: 7 }).includes("gameKing"), true, "free-ticket extensions use the actual invitation count");
+  assert.equal(earned({ mode: "experimental", miniGameInvitations: 7, miniGameParticipated: 7, miniGameSuccesses: 6 }).includes("gameKing"), false);
+  assert.equal(earned({ mode: "experimental" }).includes("gameKing"), false, "Game King requires at least one actual invitation");
+  for (const [key, id] of [["pajurSuccesses", "pajurMaster"], ["baseballSuccesses", "baseballAce"], ["memorySuccesses", "memoryMaster"]]) {
+    assert.equal(earned({ mode: "experimental", [key]: 2 }).includes(id), false);
+    assert.equal(earned({ mode: "experimental", [key]: 3 }).includes(id), true);
+  }
+  const multipleMiniGameAchievements = earned({ mode: "experimental", miniGameInvitations: 9, miniGameParticipated: 9, miniGameSuccesses: 9, pajurSuccesses: 3, baseballSuccesses: 3, memorySuccesses: 3 });
+  assert.ok(["gameKing", "pajurMaster", "baseballAce", "memoryMaster"].every(id => multipleMiniGameAchievements.includes(id)));
+  assert.equal(earned({ mode: "production", miniGameInvitations: 3, miniGameParticipated: 3, miniGameSuccesses: 3, pajurSuccesses: 3, baseballSuccesses: 3, memorySuccesses: 3 }).some(id => ["gameKing", "pajurMaster", "baseballAce", "memoryMaster"].includes(id)), false, "Production mini-games do not count toward Experimental achievements");
 
   const source = api.fresh();
   source.stats.completedRoundStats = [

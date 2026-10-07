@@ -2,7 +2,7 @@
   "use strict";
 
   const REVEAL_SECONDS = 5;
-  const CARD_COUNT = 6;
+  const CARD_COUNT = 5;
   const WRONG_REVEAL_DELAY_MS = 1000;
   const RESULT_DELAY_MS = 800;
 
@@ -56,7 +56,7 @@
     let destroyed = false;
     let completed = false;
 
-    function itemLabel(item) { return item.name[round.language]; }
+    function itemLabel(item) { return item.name.zh; }
     function active() { return !destroyed && !completed; }
     function clearTimer(key, clear) {
       if (timers[key] !== null) clear.call(scheduler, timers[key]);
@@ -72,8 +72,8 @@
       const target = round.items.find(item => item.id === round.targetItemId);
       const isReveal = round.phase === "REVEAL";
       const isQuestion = round.phase === "QUESTION";
-      const revealPrompt = round.language === "zh" ? `記住它們的位置！ ${round.countdown}` : `Remember their positions! ${round.countdown}`;
-      const questionPrompt = round.language === "zh" ? "請翻出這張牌在哪" : "Find this card";
+      const revealPrompt = `記住它們的位置！ ${round.countdown}`;
+      const questionPrompt = "請翻出這張牌在哪";
       const prompt = isReveal
         ? `<p class="memory-master-prompt">${revealPrompt}</p>`
         : `<div class="memory-question"><p class="memory-question-prompt">${questionPrompt}</p><div class="memory-question-emoji">${target.emoji}</div><div class="memory-question-name">${itemLabel(target)}</div></div>`;
@@ -84,7 +84,7 @@
         const showFace = isReveal || (round.phase === "RESOLVING" && selected) || showTarget;
         const resultClass = round.phase === "RESOLVING" ? selected ? (isTarget ? " correct" : " wrong") : showTarget ? " target" : "" : "";
         const content = showFace ? `<span>${item.emoji}</span><b>${itemLabel(item)}</b>` : "<span class=\"memory-card-back\">？</span>";
-        const label = showFace ? itemLabel(item) : `${round.language === "zh" ? "蓋牌" : "Covered card"} ${index + 1}`;
+        const label = showFace ? itemLabel(item) : `蓋牌 ${index + 1}`;
         return `<button type="button" class="memory-master-card${showFace ? " face-up" : " covered"}${resultClass}" data-memory-index="${index}" aria-label="${label}"${isQuestion ? "" : " disabled"}>${content}</button>`;
       }).join("");
       container.innerHTML = `<section class="memory-master">${prompt}<div class="memory-master-grid">${cards}</div></section>`;

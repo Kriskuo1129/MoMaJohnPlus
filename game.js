@@ -1,9 +1,15 @@
 const GAME_STATES = Object.freeze({
   READY: "READY", PRE_ROUND: "PRE_ROUND", COMMITTING: "COMMITTING", DRAWING: "DRAWING",
+  SELF_SELECT_DRAW: "SELF_SELECT_DRAW",
   MINIGAME_OFFER: "MINIGAME_OFFER", MINIGAME_ACTIVE: "MINIGAME_ACTIVE", MINIGAME_REWARD: "MINIGAME_REWARD",
+  INTER_ROUND_INVITATION: "INTER_ROUND_INVITATION", INTER_ROUND_MINIGAME: "INTER_ROUND_MINIGAME",
+  INTER_ROUND_REWARD: "INTER_ROUND_REWARD", INTER_ROUND_REWARD_REPLACEMENT: "INTER_ROUND_REWARD_REPLACEMENT",
   EVENT_REVEAL: "EVENT_REVEAL", BONUS_PENDING: "BONUS_PENDING", BONUS_DRAW: "BONUS_DRAW",
   ROUND_END: "ROUND_END", GAME_OVER: "GAME_OVER"
 });
+const GAME_MODES = Object.freeze({ PRODUCTION: "production", EXPERIMENTAL: "experimental" });
+function gameModeAllowsLeaderboardPost(mode) { return mode === GAME_MODES.PRODUCTION; }
+function gameModeDisplayName(mode) { return mode === GAME_MODES.EXPERIMENTAL ? "進階模式" : "經典模式"; }
 
 const RULES = Object.freeze({ initialAttempts: 6, maxAttempts: 6, bonusChoices: 3, baseFormalDrawCount: 15 });
 const PLAYER_NAME_STORAGE_KEY = "momajohnPlayerName";
@@ -25,14 +31,14 @@ const GAME_TILES = [...CORE_TILES,
 ];
 
 const elements = Object.fromEntries([
-  "board", "draw-stack", "total-score", "round-score", "rounds-display", "player-display",
+  "board", "draw-stack", "total-score", "round-score", "rounds-display", "player-display", "game-mode-indicator",
   "player-name-input", "player-name-error", "options-button", "start-screen", "game-shell", "play-area",
-  "item-status-button", "tile-peek-button", "tile-overview-overlay", "tile-overview-grid", "tile-overview-close",
-  "pre-round-panel", "pre-round-event-options", "pre-round-skip-button", "pre-round-leverage-options", "pre-round-error", "start-round-button",
+  "item-status-button", "inventory-full-badge", "tile-peek-button", "tile-overview-overlay", "tile-overview-grid", "tile-overview-close",
+  "pre-round-panel", "pre-round-event-options", "pre-round-skip-button", "pre-round-leverage-title", "pre-round-leverage-options", "pre-round-error", "pre-round-item-button", "pre-round-inventory-count", "start-round-button",
   "final-waiting-overlay", "final-waiting-title", "final-waiting-missing",
   "bonus-modal", "bonus-waiting", "bonus-instruction", "bonus-count", "bonus-grid", "bonus-result",
-  "message",
-  "toast-stack", "leaderboard-overlay", "leaderboard-content", "leaderboard-retry", "leaderboard-close",
+  "message", "side-challenge-status",
+  "toast-stack", "leaderboard-overlay", "leaderboard-content", "leaderboard-retry", "leaderboard-close", "leaderboard-highest", "leaderboard-lowest",
   "modal", "modal-icon", "modal-kicker", "modal-title", "modal-body", "modal-actions"
 ].map(id => [id.replace(/-([a-z])/g, (_, c) => c.toUpperCase()), document.querySelector(`#${id}`)]));
 
@@ -49,13 +55,16 @@ const LINE_DEFINITIONS = buildLines();
 const EMPTY_PLAYER_DISPLAY_NAME = "-沒輸入名稱-";
 let game;
 
-function freshGameState(playerName = "") {
+function freshGameState(playerName = "", mode = GAME_MODES.PRODUCTION) {
   const betStats = Object.fromEntries(PRE_ROUND_EVENT_DEFINITIONS.filter(event => event.type === "BET").map(event => [event.id, { played: 0, won: 0, lost: 0 }]));
   return {
-    playerName, state: GAME_STATES.READY, score: 0, totalLines: 0, items: [],
-    totalAttemptsGranted: RULES.initialAttempts, attemptsConsumed: 0, roundsPlayed: 0,
+    playerName, mode, state: GAME_STATES.READY, score: 0, totalLines: 0, items: [], pendingInterRoundRewardId: null,
+    totalAttemptsGranted: RULES.initialAttempts, attemptsConsumed: 0, roundsPlayed: 0, interRoundMiniGameResults: [],
     achievementCount: 0, round: null, busy: false, pendingSpecial: null, uiOverlayOpen: false,
-    leaderboardSubmitted: false, leaderboardSubmissionStatus: "idle",
+    leaderboardSubmitted: false, leaderboardSubmissionStatus: "idle", leaderboardPreparedPayload: null,
+    leaderboardSnapshotValid: false, leaderboardSnapshot: null,
+    leaderboardQualifiedHighest: false, leaderboardQualifiedLowest: false, leaderboardQualificationMode: null,
+    leaderboardGameOverProcessing: false, leaderboardGameOverComplete: false,
     stats: {
       totalScore: 0, totalLines: 0, roundsPlayed: 0, totalRoundCost: 0,
       multiplier1Count: 0, multiplier2Count: 0, multiplier3Count: 0,
@@ -68,16 +77,37 @@ function freshGameState(playerName = "") {
       extraRoundsFromEvents: 0, eventScoreGain: 0, eventScoreLoss: 0, eventEarlyEndCount: 0, gameOverByEvent: false,
       betsPlaced: 0, betsWon: 0, betsLost: 0, betScoreGain: 0, betScoreLoss: 0, betStats,
       earlyWaitingCount: 0, lastTileFirstLineCount: 0,
+      miniGameInvitationCount: 0, miniGameParticipatedCount: 0, miniGameSuccessCount: 0, miniGameFailureCount: 0, miniGameSkipCount: 0,
+      miniGameSuccessById: { pachinko: 0, baseball9: 0, memoryMaster: 0 },
       highestRoundRawPoints: 0, highestRoundSettledPoints: 0, highestMultiplier: 1, highestRoundLines: 0, totalAchievements: 0,
       completedRoundStats: [], activeItemUses: 0, earnedAchievements: []
     }
   };
 }
 
-function getPreRoundEventWeight(event) { return event.type === "ITEM" ? ITEM_DEFINITIONS.length : 1; }
+function getRandomItemDefinitions() { return ITEM_DEFINITIONS.filter(item => !item.rewardOnly); }
+function getTicketDefinitions() { return ITEM_DEFINITIONS.filter(item => item.rewardOnly); }
+function getPreRoundEventWeight(event) { return event.weight ?? (event.type === "ITEM" ? getRandomItemDefinitions().length : 1); }
 
-function drawPreRoundEvents(random = Math.random) {
-  const pool = PRE_ROUND_EVENT_DEFINITIONS.filter(event => event.enabled !== false);
+function getPreRoundModeConfig(mode = game?.mode ?? GAME_MODES.PRODUCTION, configs = PRE_ROUND_MODE_CONFIG) {
+  return configs[mode] ?? configs.production;
+}
+
+function resolvePreRoundEventForMode(event, mode = game?.mode ?? GAME_MODES.PRODUCTION, configs = PRE_ROUND_MODE_CONFIG) {
+  const override = getPreRoundModeConfig(mode, configs)?.overrides?.[event.id];
+  return override ? Object.freeze({ ...event, ...override }) : event;
+}
+
+function getEligiblePreRoundEvents(mode = game?.mode ?? GAME_MODES.PRODUCTION, configs = PRE_ROUND_MODE_CONFIG) {
+  const modeConfig = getPreRoundModeConfig(mode, configs);
+  const categoryIds = modeConfig.selection === "FIXED_CATEGORIES" ? new Set(modeConfig.categories.flatMap(category => category.eventIds)) : null;
+  return PRE_ROUND_EVENT_DEFINITIONS
+    .map(event => resolvePreRoundEventForMode(event, mode, configs))
+    .filter(event => event.enabled !== false && (!categoryIds || categoryIds.has(event.id)));
+}
+
+function drawPreRoundEvents(random = Math.random, mode = game?.mode ?? GAME_MODES.PRODUCTION) {
+  const pool = [...getEligiblePreRoundEvents(mode)];
   const selected = [];
   while (selected.length < 3 && pool.length) {
     const event = weightedRandom(pool, random(), getPreRoundEventWeight);
@@ -88,17 +118,24 @@ function drawPreRoundEvents(random = Math.random) {
   return selected;
 }
 
-function createRound(formalDrawCount = RULES.baseFormalDrawCount, eventOptions = drawPreRoundEvents()) {
+function getPreRoundCategoryOptions(mode = game?.mode ?? GAME_MODES.PRODUCTION) {
+  const config = getPreRoundModeConfig(mode);
+  return config.selection === "FIXED_CATEGORIES" ? [...config.categories] : drawPreRoundEvents(Math.random, mode);
+}
+
+function createRound(formalDrawCount = RULES.baseFormalDrawCount, eventOptions = getPreRoundCategoryOptions()) {
   const board = shuffle(GAME_TILES);
   const order = shuffle(GAME_TILES);
   return {
     board, formalDrawCount, hand: order.slice(0, formalDrawCount), remaining: order.slice(formalDrawCount), drawIndex: 0, drawn: new Set(), discarded: new Set(), started: false, attemptStart: game.attemptsConsumed,
-    preRound: { eventOptions, eventSelectionType: "UNSELECTED", selectedEventId: null, selectedLeverage: 1 }, config: null, committed: false,
+    preRound: { eventOptions, eventSelectionType: "UNSELECTED", selectedEventId: null, selectedEvent: null, selectedCategoryId: null, categoryCommitted: false, selectedLeverage: 1, freeTicketDecision: null }, config: null, committed: false,
     completedLines: new Set(), activeWaiting: new Set(), announcedWaiting: new Set(), everWaitingLines: new Set(), achievements: new Set(),
     rawPoints: 0, roundScore: 0, roundLines: 0, roundMultiplier: 1, finalMultiplier: 1, leverageConfigured: false, betSettled: false, betResult: null, everWaited: false, waitingAnnouncements: 0, chanceMakerTriggered: false, pendingItemId: null, itemRevealConfirmed: false, rpsResult: null,
-    miniGame: { offered: false, completed: false, selectedId: null, challengeResult: null, challengeResolved: false, failureDrawStarted: false, memory: null, pajur: null, baseball9: null }, tilePicker: null,
+    miniGame: createMiniGameState(), tilePicker: null,
     pointsSettled: false, multiplierPoints: 0, actualMultiplierPoints: 0, betNetPoints: 0, finalRoundChange: 0, scoreBeforeSettlement: 0, scoreBreakdown: [], activeItemUses: 0, completedStatsRecorded: false, eventAttemptDelta: 0, eventAddedAttempts: 0,
-    bonusMissing: new Set(), bonusCandidates: [], selectedBonusTiles: [], bonusResolved: false, bonusPendingStarted: false, bonusAttemptGain: 0
+    bonusMissing: new Set(), bonusCandidates: [], selectedBonusTiles: [], bonusResolved: false, bonusPendingStarted: false, bonusAttemptGain: 0,
+    lastAcquiredTileId: null, lastTileCelebrationPending: false, lastTileCelebrationPlayed: false,
+    sideChallenge: null
   };
 }
 
@@ -122,6 +159,7 @@ function weightedRandom(events, random = Math.random(), getWeight = event => eve
 }
 
 function startRound() {
+  clearSideChallengeRevealPresentation();
   hideTileOverview();
   closeModal();
   closeBonusModal();
@@ -140,29 +178,39 @@ function startRound() {
 function renderPreRound() {
   if (game.state !== GAME_STATES.PRE_ROUND || !game.round || game.round.committed) return;
   const { eventOptions, eventSelectionType, selectedEventId, selectedLeverage } = game.round.preRound;
+  const categoryMode = game.mode === GAME_MODES.EXPERIMENTAL && getPreRoundModeConfig().selection === "FIXED_CATEGORIES";
   elements.preRoundEventOptions.replaceChildren(...eventOptions.map(event => {
     const button = document.createElement("button");
     button.type = "button";
-    const selected = eventSelectionType === "EVENT" && selectedEventId === event.id;
+    const selected = categoryMode ? eventSelectionType === "CATEGORY" && game.round.preRound.selectedCategoryId === event.id : eventSelectionType === "EVENT" && selectedEventId === event.id;
     button.className = `pre-round-event-card pre-round-event-${event.type.toLowerCase()}${selected ? " selected" : ""}`;
-    button.dataset.eventId = event.id;
+    if (categoryMode) button.dataset.categoryId = event.id;
+    else button.dataset.eventId = event.id;
     button.setAttribute("aria-pressed", String(selected));
-    const description = event.type === "BET" ? `${event.description} 成功 +${event.reward}／失敗 -${event.penalty}` : event.description;
+    const description = !categoryMode && event.type === "BET" ? `${event.description} 成功 +${event.reward}／失敗 -${event.penalty}` : event.description;
     button.innerHTML = `<b>${event.title}</b><span>${description}</span>`;
     button.addEventListener("click", selectPreRoundEvent);
     return button;
   }));
   elements.preRoundSkipButton.classList.toggle("selected", eventSelectionType === "SKIP");
   elements.preRoundSkipButton.setAttribute("aria-pressed", String(eventSelectionType === "SKIP"));
-  elements.preRoundLeverageOptions.replaceChildren(...[1, 2, 3].map(leverage => {
+  const leverageOptions = game.mode === GAME_MODES.EXPERIMENTAL ? [2, 3] : [1, 2, 3];
+  const multiplierTickets = itemCount("multiplier-ticket");
+  elements.preRoundLeverageTitle.textContent = game.mode === GAME_MODES.EXPERIMENTAL ? "券倍率（未選擇為 ×1）" : "開槓桿";
+  elements.preRoundLeverageOptions.classList.toggle("experimental-ticket-multipliers", game.mode === GAME_MODES.EXPERIMENTAL);
+  elements.preRoundLeverageOptions.replaceChildren(...leverageOptions.map(leverage => {
     const button = document.createElement("button");
-    const available = leverage <= attemptsRemaining();
+    const available = game.mode === GAME_MODES.EXPERIMENTAL
+      ? multiplierTickets >= ticketMultiplierCost(leverage)
+      : leverage <= attemptsRemaining();
     button.type = "button";
     button.className = `pre-round-leverage${selectedLeverage === leverage ? " selected" : ""}`;
     button.dataset.leverage = leverage;
     button.disabled = !available;
     button.setAttribute("aria-pressed", String(selectedLeverage === leverage));
-    button.innerHTML = `<b>×${leverage}</b><span>消耗 ${leverage} 局</span>`;
+    button.innerHTML = game.mode === GAME_MODES.EXPERIMENTAL
+      ? `<b>×${leverage}</b><span><i class="ticket-icon">倍</i> ×${ticketMultiplierCost(leverage)}</span>`
+      : `<b>×${leverage}</b><span>消耗 ${leverage} 局</span>`;
     button.addEventListener("click", selectPreRoundLeverage);
     return button;
   }));
@@ -172,6 +220,8 @@ function renderPreRound() {
 
 function selectPreRoundEvent(event) {
   if (game.state !== GAME_STATES.PRE_ROUND || game.round.committed) return;
+  const categoryId = event.currentTarget.dataset.categoryId;
+  if (categoryId) return selectAdvancedPreRoundCategory(categoryId);
   const eventId = event.currentTarget.dataset.eventId;
   if (!game.round.preRound.eventOptions.some(option => option.id === eventId)) return;
   game.round.preRound.eventSelectionType = "EVENT";
@@ -183,39 +233,287 @@ function selectPreRoundSkip() {
   if (game.state !== GAME_STATES.PRE_ROUND || game.round.committed) return;
   game.round.preRound.eventSelectionType = "SKIP";
   game.round.preRound.selectedEventId = null;
+  game.round.preRound.selectedEvent = null;
+  game.round.preRound.selectedCategoryId = null;
   renderPreRound();
 }
 
 function selectPreRoundLeverage(event) {
   if (game.state !== GAME_STATES.PRE_ROUND || game.round.committed) return;
   const leverage = Number(event.currentTarget.dataset.leverage);
-  if (![1, 2, 3].includes(leverage) || leverage > attemptsRemaining()) return;
-  game.round.preRound.selectedLeverage = leverage;
+  if (![1, 2, 3].includes(leverage)) return;
+  if (game.mode === GAME_MODES.EXPERIMENTAL) {
+    if (![2, 3].includes(leverage) || itemCount("multiplier-ticket") < ticketMultiplierCost(leverage)) return;
+    game.round.preRound.selectedLeverage = game.round.preRound.selectedLeverage === leverage ? 1 : leverage;
+  } else {
+    if (leverage > attemptsRemaining()) return;
+    game.round.preRound.selectedLeverage = leverage;
+  }
   renderPreRound();
 }
 
-function commitRoundConfiguration() {
+function getAdvancedPreRoundCategory(categoryId) {
+  return getPreRoundModeConfig(GAME_MODES.EXPERIMENTAL).categories.find(category => category.id === categoryId) ?? null;
+}
+
+function getAdvancedPreRoundCategoryPool(categoryId, configs = PRE_ROUND_MODE_CONFIG) {
+  const category = getPreRoundModeConfig(GAME_MODES.EXPERIMENTAL, configs).categories.find(option => option.id === categoryId);
+  if (!category) return [];
+  const ids = new Set(category.eventIds);
+  return getEligiblePreRoundEvents(GAME_MODES.EXPERIMENTAL, configs).filter(event => ids.has(event.id) && event.type === category.type);
+}
+
+function selectAdvancedPreRoundCategory(categoryId) {
+  if (game.mode !== GAME_MODES.EXPERIMENTAL || game.state !== GAME_STATES.PRE_ROUND || game.round.committed) return false;
+  if (!getAdvancedPreRoundCategory(categoryId)) return false;
+  game.round.preRound.eventSelectionType = "CATEGORY";
+  game.round.preRound.selectedCategoryId = categoryId;
+  game.round.preRound.selectedEventId = null;
+  game.round.preRound.selectedEvent = null;
+  game.round.preRound.categoryCommitted = false;
+  game.round.pendingItemId = null;
+  game.round.itemRevealConfirmed = false;
+  renderPreRound();
+  return true;
+}
+
+function closeAdvancedCategoryReveal() {
+  if (game.state !== GAME_STATES.COMMITTING || !game.round.preRound.categoryCommitted) return false;
+  const selectedEvent = game.round.preRound.selectedEvent;
+  const leverage = game.round.preRound.selectedLeverage;
+  game.uiOverlayOpen = false;
+  closeModal();
+  return continueCommittedRound(selectedEvent, leverage);
+}
+
+function openAdvancedCategoryReveal(category, selectedEvent) {
+  game.uiOverlayOpen = true;
+  const description = selectedEvent.type === "BET"
+    ? `${selectedEvent.description} 成功 +${selectedEvent.reward}／失敗 -${selectedEvent.penalty}`
+    : selectedEvent.description;
+  openModal({
+    icon: category.type === "BET" ? "機" : "命", kicker: category.title, title: selectedEvent.title,
+    body: `<div class="pre-round-category-result"><p>${description}</p></div>`,
+    actions: [{ label: "確定", action: closeAdvancedCategoryReveal }]
+  });
+  return true;
+}
+
+function commitAdvancedPreRoundCategory(random = Math.random) {
+  if (game.mode !== GAME_MODES.EXPERIMENTAL || game.state !== GAME_STATES.COMMITTING || !game.round.committed || game.round.preRound.categoryCommitted) return false;
+  const categoryId = game.round.preRound.selectedCategoryId;
+  const category = getAdvancedPreRoundCategory(categoryId);
+  const pool = getAdvancedPreRoundCategoryPool(categoryId);
+  if (!category || !pool.length) return false;
+  const selectedEvent = weightedRandom(pool, random(), getPreRoundEventWeight);
+  game.round.preRound.categoryCommitted = true;
+  game.round.preRound.selectedCategoryId = categoryId;
+  game.round.preRound.selectedEventId = selectedEvent.id;
+  game.round.preRound.selectedEvent = selectedEvent;
+  if (category.type === "ITEM") {
+    const randomItems = getRandomItemDefinitions();
+    game.round.pendingItemId = randomItems[Math.floor(random() * randomItems.length)].id;
+    return openItemReveal(selectedEvent, game.round.preRound.selectedLeverage);
+  }
+  return openAdvancedCategoryReveal(category, selectedEvent);
+}
+
+let sideChallengeRevealTimerIds = [];
+
+function selectSideChallenge(random = Math.random) {
+  return SIDE_CHALLENGE_DEFINITIONS[Math.floor(random() * SIDE_CHALLENGE_DEFINITIONS.length)] ?? null;
+}
+
+function initializeSideChallenge(random = Math.random) {
+  if (game.mode !== GAME_MODES.EXPERIMENTAL || !game.round?.started || game.round.sideChallenge) return false;
+  const definition = selectSideChallenge(random);
+  if (!definition) return false;
+  game.round.sideChallenge = { id: definition.id, status: "ACTIVE", promptShown: false, baseReward: 10, awarded: false, revealReady: false, revealConfirmed: false };
+  renderSideChallengeStatus();
+  return definition;
+}
+
+function clearSideChallengeRevealPresentation() {
+  sideChallengeRevealTimerIds.forEach(timerId => clearTimeout(timerId));
+  sideChallengeRevealTimerIds = [];
+}
+
+function finishSideChallengeReveal(definition) {
+  const runtime = game.round?.sideChallenge;
+  if (!runtime || runtime.id !== definition?.id || runtime.revealConfirmed) return false;
+  runtime.revealReady = true;
+  const reel = elements.modalBody.querySelector("[data-side-challenge-reel]");
+  if (reel) {
+    reel.classList.add("revealed");
+    reel.innerHTML = `<b>${definition.title}</b><span>${definition.description}</span>`;
+  }
+  const confirmButton = elements.modalActions.querySelector("button");
+  if (confirmButton) confirmButton.disabled = false;
+  return true;
+}
+
+function openSideChallengeReveal(definition, scheduler = setTimeout) {
+  const runtime = game.round?.sideChallenge;
+  if (game.mode !== GAME_MODES.EXPERIMENTAL || game.state !== GAME_STATES.DRAWING || !runtime || runtime.id !== definition?.id) return false;
+  clearSideChallengeRevealPresentation();
+  game.uiOverlayOpen = true;
+  runtime.revealReady = false;
+  runtime.revealConfirmed = false;
+  openModal({
+    icon: "任", kicker: "本局任務揭曉", title: "小任務挑戰",
+    body: `<div class="side-challenge-reveal"><small>任務抽選中</small><div class="side-challenge-reel" data-side-challenge-reel><b>？？？</b><span>準備揭曉本局任務</span></div></div>`,
+    actions: [{ label: "確定", action: confirmSideChallengeReveal, disabled: true }]
+  });
+  elements.modal.classList.add("side-challenge-reveal-modal");
+  updateHUD();
+  const reducedMotion = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const cycleCount = reducedMotion ? 0 : 6;
+  for (let index = 0; index < cycleCount; index += 1) {
+    sideChallengeRevealTimerIds.push(scheduler(() => {
+      const reel = elements.modalBody.querySelector("[data-side-challenge-reel]");
+      const preview = SIDE_CHALLENGE_DEFINITIONS[(SIDE_CHALLENGE_DEFINITIONS.indexOf(definition) + index + 1) % SIDE_CHALLENGE_DEFINITIONS.length];
+      if (reel && !runtime.revealConfirmed) reel.innerHTML = `<b>${preview.title}</b><span>抽選中……</span>`;
+    }, 120 + index * 120));
+  }
+  sideChallengeRevealTimerIds.push(scheduler(() => finishSideChallengeReveal(definition), reducedMotion ? 40 : 960));
+  return true;
+}
+
+function confirmSideChallengeReveal() {
+  const runtime = game.round?.sideChallenge;
+  if (game.mode !== GAME_MODES.EXPERIMENTAL || game.state !== GAME_STATES.DRAWING || !runtime?.revealReady || runtime.revealConfirmed) return false;
+  runtime.revealConfirmed = true;
+  clearSideChallengeRevealPresentation();
+  game.uiOverlayOpen = false;
+  closeModal();
+  updateHUD();
+  return true;
+}
+
+function sideChallengeDefinition() {
+  return SIDE_CHALLENGE_DEFINITIONS.find(definition => definition.id === game.round?.sideChallenge?.id) ?? null;
+}
+
+function renderSideChallengeStatus() {
+  const runtime = game.round?.sideChallenge;
+  const definition = sideChallengeDefinition();
+  const visible = game.mode === GAME_MODES.EXPERIMENTAL && runtime && definition && game.round?.started;
+  elements.sideChallengeStatus.classList.toggle("hidden", !visible);
+  if (!visible) { elements.sideChallengeStatus.textContent = ""; return; }
+  const status = { ACTIVE: "進行中", SUCCESS: "完成", FAILURE: "失敗" }[runtime.status];
+  const reverse = definition.type === "AVOID";
+  const tiles = definition.tileIds.map(tileId => {
+    const tile = CORE_TILES.find(candidate => candidate.id === tileId);
+    const acquired = isOfficiallyDrawn(tileId);
+    const stateClass = reverse ? (acquired ? "danger" : "safe") : (acquired ? "complete" : "incomplete");
+    const marker = reverse ? (acquired ? "✕" : "✓") : (acquired ? "✓" : "×");
+    return `<span class="side-challenge-progress ${stateClass}">${tile?.label ?? tileId} <b>${marker}</b></span>`;
+  }).join("");
+  elements.sideChallengeStatus.innerHTML = `<header><b>小任務　${definition.title}</b><em>${status}</em></header><div class="side-challenge-progress-list">${tiles}</div>`;
+}
+
+function completeSideChallenge(status) {
+  const runtime = game.round?.sideChallenge;
+  const definition = sideChallengeDefinition();
+  if (!runtime || !definition || runtime.status !== "ACTIVE" || !["SUCCESS", "FAILURE"].includes(status)) return false;
+  runtime.status = status;
+  if (status === "SUCCESS" && !runtime.awarded) {
+    runtime.awarded = true;
+    game.round.rawPoints += runtime.baseReward;
+    game.round.roundScore = game.round.rawPoints;
+  }
+  if (!runtime.promptShown) {
+    runtime.promptShown = true;
+    notifyScore(status === "SUCCESS" ? `小任務挑戰完成！${definition.title}` : `小任務挑戰失敗！${definition.title}`, { type: "achievement", duration: 2300 });
+  }
+  renderSideChallengeStatus();
+  updateHUD();
+  return true;
+}
+
+function evaluateSideChallengeAfterAcquisition(tile) {
+  const runtime = game.round?.sideChallenge;
+  const definition = sideChallengeDefinition();
+  if (game.mode !== GAME_MODES.EXPERIMENTAL || !runtime || runtime.status !== "ACTIVE" || !definition || !tile) return false;
+  if (definition.type === "AVOID" && definition.tileIds.includes(tile.id)) return completeSideChallenge("FAILURE");
+  if (definition.type === "COLLECT" && definition.tileIds.every(isOfficiallyDrawn)) return completeSideChallenge("SUCCESS");
+  return false;
+}
+
+function resolveSideChallengeAtRoundEnd() {
+  const runtime = game.round?.sideChallenge;
+  const definition = sideChallengeDefinition();
+  if (game.mode !== GAME_MODES.EXPERIMENTAL || !runtime || runtime.status !== "ACTIVE" || !definition) return false;
+  return completeSideChallenge(definition.type === "AVOID" ? "SUCCESS" : "FAILURE");
+}
+
+function renderSideChallengeSettlement() {
+  const runtime = game.round?.sideChallenge;
+  const definition = sideChallengeDefinition();
+  if (game.mode !== GAME_MODES.EXPERIMENTAL || !runtime || !definition) return "";
+  const multiplier = game.round.finalMultiplier;
+  const result = runtime.status === "SUCCESS"
+    ? `<strong>+${runtime.baseReward} ×${multiplier} = +${runtime.baseReward * multiplier}</strong>`
+    : "<strong>失敗 +0</strong>";
+  return `<section class="side-challenge-result"><span>小任務挑戰｜${definition.title}</span>${result}</section>`;
+}
+
+function openFreeTicketConfirmation() {
+  if (game.mode !== GAME_MODES.EXPERIMENTAL || game.state !== GAME_STATES.PRE_ROUND || !hasItem("free-ticket")) return false;
+  openModal({
+    icon: "免", kicker: "免費券", title: "要使用免費券嗎？",
+    body: "<p>使用後，本局不消耗局數。</p>",
+    actions: [
+      { label: "不用", className: "secondary", action: () => resolveFreeTicketDecision(false) },
+      { label: "使用", action: () => resolveFreeTicketDecision(true) }
+    ]
+  });
+  return true;
+}
+
+function resolveFreeTicketDecision(useTicket, random = Math.random) {
+  if (game.mode !== GAME_MODES.EXPERIMENTAL || game.state !== GAME_STATES.PRE_ROUND || game.round.committed) return false;
+  game.round.preRound.freeTicketDecision = useTicket ? "USE" : "DECLINE";
+  closeModal();
+  return commitRoundConfiguration(random);
+}
+
+function commitRoundConfiguration(randomSource = Math.random) {
   if (game.state !== GAME_STATES.PRE_ROUND || !game.round || game.round.committed) return false;
+  const random = typeof randomSource === "function" ? randomSource : Math.random;
   const { eventOptions, eventSelectionType, selectedEventId, selectedLeverage } = game.round.preRound;
+  const advancedCategory = game.mode === GAME_MODES.EXPERIMENTAL && eventSelectionType === "CATEGORY";
   const selectedEvent = eventSelectionType === "EVENT" ? eventOptions.find(event => event.id === selectedEventId) : null;
-  if (eventSelectionType === "UNSELECTED" || (eventSelectionType === "EVENT" && !selectedEvent) || !["EVENT", "SKIP"].includes(eventSelectionType)) {
+  const selectionValid = eventSelectionType === "SKIP" || (advancedCategory && getAdvancedPreRoundCategory(game.round.preRound.selectedCategoryId)) || (eventSelectionType === "EVENT" && selectedEvent);
+  if (!selectionValid) {
     elements.preRoundError.textContent = "請選擇一張場中事件，或明確選擇這局不選事件。";
     return false;
   }
-  if (![1, 2, 3].includes(selectedLeverage) || selectedLeverage > attemptsRemaining()) {
+  const leverageValid = game.mode === GAME_MODES.EXPERIMENTAL
+    ? [1, 2, 3].includes(selectedLeverage) && itemCount("multiplier-ticket") >= ticketMultiplierCost(selectedLeverage)
+    : [1, 2, 3].includes(selectedLeverage) && selectedLeverage <= attemptsRemaining();
+  if (!leverageValid) {
     renderPreRound();
-    elements.preRoundError.textContent = "目前剩餘局數不足，請重新選擇槓桿。";
+    elements.preRoundError.textContent = game.mode === GAME_MODES.EXPERIMENTAL ? "倍率券數量不足，請重新選擇倍率。" : "目前剩餘局數不足，請重新選擇槓桿。";
     return false;
   }
+  if (game.mode === GAME_MODES.EXPERIMENTAL && hasItem("free-ticket") && game.round.preRound.freeTicketDecision === null) return openFreeTicketConfirmation();
   game.round.committed = true;
   elements.startRoundButton.disabled = true;
   game.state = GAME_STATES.COMMITTING;
+  if (advancedCategory) return commitAdvancedPreRoundCategory(random);
+  return continueCommittedRound(selectedEvent, selectedLeverage);
+}
+
+function continueCommittedRound(selectedEvent, selectedLeverage) {
+  if (game.state !== GAME_STATES.COMMITTING || !game.round?.committed || game.round.config) return false;
   if (selectedEvent?.effectKey === "ROCK_PAPER_SCISSORS") {
     openRockPaperScissors(selectedEvent, selectedLeverage);
     return true;
   }
   if (selectedEvent?.type === "ITEM") {
-    beginItemAcquisition(selectedEvent, selectedLeverage);
+    if (game.round.itemRevealConfirmed) finalizeRoundConfiguration(selectedEvent, selectedLeverage);
+    else beginItemAcquisition(selectedEvent, selectedLeverage);
     return true;
   }
   finalizeRoundConfiguration(selectedEvent, selectedLeverage);
@@ -250,12 +548,25 @@ function drawInRoundEvent(random = Math.random()) {
   return weightedRandom(EVENT_DEFINITIONS.filter(event => event.enabled), random, getEffectiveEventWeight);
 }
 function hasItem(itemId) { return game.items.includes(itemId); }
+function itemCount(itemId) { return game.items.filter(id => id === itemId).length; }
+function ticketMultiplierCost(multiplier) { return multiplier === 3 ? 2 : multiplier === 2 ? 1 : 0; }
+function consumeItems(itemId, count) {
+  if (count < 1) return true;
+  if (itemCount(itemId) < count) return false;
+  for (let removed = 0; removed < count; removed += 1) game.items.splice(game.items.indexOf(itemId), 1);
+  return true;
+}
 
 function beginItemAcquisition(event, leverage) {
   if (game.state !== GAME_STATES.COMMITTING || game.round.config) return false;
-  if (!game.round.pendingItemId) game.round.pendingItemId = ITEM_DEFINITIONS[Math.floor(Math.random() * ITEM_DEFINITIONS.length)].id;
+  const randomItems = getRandomItemDefinitions();
+  if (!game.round.pendingItemId) game.round.pendingItemId = randomItems[Math.floor(Math.random() * randomItems.length)].id;
   openItemReveal(event, leverage);
   return true;
+}
+
+function isAdvancedPreRoundItemSelection() {
+  return game.mode === GAME_MODES.EXPERIMENTAL && game.round?.preRound?.categoryCommitted && game.round.preRound.selectedCategoryId === "item";
 }
 
 function openItemReveal(event, leverage) {
@@ -263,7 +574,7 @@ function openItemReveal(event, leverage) {
   const incoming = itemById(game.round.pendingItemId);
   const isFull = game.items.length >= 3;
   openModal({
-    icon: "禮", kicker: "神秘禮物！", title: "你抽到了",
+    icon: "禮", kicker: isAdvancedPreRoundItemSelection() ? "獲得道具" : "神秘禮物！", title: "你抽到了",
     body: `<article class="item-reveal"><b>${incoming.title}</b><p>${incoming.description}</p></article>`,
     actions: [{ label: isFull ? "選擇替換" : "收下", action: () => isFull ? confirmItemReplacement(event, leverage) : acceptRevealedItem(event, leverage) }]
   });
@@ -287,7 +598,7 @@ function confirmItemReplacement(event, leverage) {
 
 function openItemReplacement(event, leverage) {
   const incoming = itemById(game.round.pendingItemId);
-  openModal({ icon: "禮", kicker: "神秘禮物到來", title: `獲得：${incoming.title}`, body: `<p>道具欄已滿，請選擇一個舊道具替換。</p><div class="item-replacement-options">${game.items.map((itemId, index) => { const item = itemById(itemId); return `<button type="button" data-replace-item-index="${index}"><b>${item.title}</b><span>${item.description}</span></button>`; }).join("")}</div>`, actions: [] });
+  openModal({ icon: "禮", kicker: isAdvancedPreRoundItemSelection() ? "獲得道具" : "神秘禮物到來", title: `獲得：${incoming.title}`, body: `<p>道具欄已滿，請選擇一個舊道具替換。</p><div class="item-replacement-options">${game.items.map((itemId, index) => { const item = itemById(itemId); return `<button type="button" data-replace-item-index="${index}"><b>${item.title}</b><span>${item.description}</span></button>`; }).join("")}</div>`, actions: [] });
   elements.modalBody.querySelectorAll("[data-replace-item-index]").forEach(button => button.addEventListener("click", () => completeItemReplacement(event, leverage, Number(button.dataset.replaceItemIndex))));
 }
 
@@ -300,12 +611,39 @@ function completeItemReplacement(event, leverage, index) {
 
 function finalizeRoundConfiguration(event, leverage, specialMultiplierOverride = null) {
   if (game.state !== GAME_STATES.COMMITTING || !game.round?.committed || game.round.config) return false;
+  const experimental = game.mode === GAME_MODES.EXPERIMENTAL;
+  const multiplierTicketCost = experimental ? ticketMultiplierCost(leverage) : 0;
+  const useFreeTicket = experimental && game.round.preRound.freeTicketDecision === "USE";
+  if (itemCount("multiplier-ticket") < multiplierTicketCost || (useFreeTicket && !hasItem("free-ticket"))) {
+    game.round.committed = false;
+    game.state = GAME_STATES.PRE_ROUND;
+    if (experimental && game.round.preRound.eventSelectionType === "CATEGORY") {
+      game.round.preRound.categoryCommitted = false;
+      game.round.preRound.selectedEventId = null;
+      game.round.preRound.selectedEvent = null;
+      game.round.pendingItemId = null;
+      game.round.itemRevealConfirmed = false;
+      game.round.rpsResult = null;
+    }
+    game.uiOverlayOpen = false;
+    game.round.preRound.selectedLeverage = itemCount("multiplier-ticket") >= multiplierTicketCost ? leverage : 1;
+    if (useFreeTicket && !hasItem("free-ticket")) game.round.preRound.freeTicketDecision = null;
+    closeModal();
+    renderPreRound();
+    elements.preRoundError.textContent = "道具狀態已變更，請重新確認本局設定。";
+    return false;
+  }
   const special = specialEventConfig(event);
   if (specialMultiplierOverride !== null) special.specialMultiplier = specialMultiplierOverride;
   const finalMultiplier = leverage * special.specialMultiplier;
+  const roundOpportunityCost = experimental ? (useFreeTicket ? 0 : 1) : leverage;
+  consumeItems("multiplier-ticket", multiplierTicketCost);
+  if (useFreeTicket) consumeItems("free-ticket", 1);
   game.round.config = Object.freeze({
     eventId: event?.id ?? null, eventType: event?.type ?? "NONE", leverage, leverageMultiplier: leverage,
-    specialMultiplier: special.specialMultiplier, finalMultiplier,
+    eventConfig: event ? Object.freeze({ ...event }) : null,
+    ticketMultiplier: experimental ? leverage : 1, specialMultiplier: special.specialMultiplier, finalMultiplier,
+    roundOpportunityCost, freeTicketUsed: useFreeTicket,
     formalDrawCount: special.formalDrawCount,
     activeBetId: event?.type === "BET" ? event.id : null,
     forcedMiniGameId: special.forcedMiniGameId
@@ -318,17 +656,19 @@ function finalizeRoundConfiguration(event, leverage, specialMultiplierOverride =
   game.round.finalMultiplier = finalMultiplier;
   game.round.leverageConfigured = true;
   game.round.started = true;
-  game.attemptsConsumed += leverage;
+  game.attemptsConsumed += roundOpportunityCost;
   game.roundsPlayed += 1;
   game.stats.roundsPlayed += 1;
-  game.stats.totalRoundCost += leverage;
+  game.stats.totalRoundCost += roundOpportunityCost;
   game.stats[`multiplier${leverage}Count`] += 1;
   elements.preRoundPanel.classList.add("hidden");
   elements.playArea.classList.remove("hidden");
   renderBoard();
   closeModal();
   game.state = GAME_STATES.DRAWING;
+  const sideChallenge = initializeSideChallenge();
   updateHUD();
+  if (sideChallenge) openSideChallengeReveal(sideChallenge);
   return true;
 }
 
@@ -396,12 +736,20 @@ function renderRoundStatusContent() {
 
 function currentRoundStatusText() {
   if (game.round?.config?.eventType === "NONE") return "本局未選擇場中事件";
-  const event = PRE_ROUND_EVENT_DEFINITIONS.find(item => item.id === game.round?.config?.eventId);
+  const event = game.round?.config?.eventConfig ?? PRE_ROUND_EVENT_DEFINITIONS.find(item => item.id === game.round?.config?.eventId);
   if (!event) return "尚未開始本局。";
   if (event.type === "BET") return `${event.title}下注中`;
   if (event.id === "boss-boost" || event.id === "boss-leverage") return `${event.title}，本局 ×${game.round.config.finalMultiplier}`;
   if (event.id === "rock-paper-scissors") return `與老闆猜拳已分勝負，本局 ×${game.round.config.finalMultiplier}`;
   return event.title;
+}
+
+function renderSideChallengeDetail() {
+  const runtime = game.round?.sideChallenge;
+  const definition = sideChallengeDefinition();
+  if (game.mode !== GAME_MODES.EXPERIMENTAL || !runtime || !definition) return "";
+  const status = { ACTIVE: "進行中", SUCCESS: "完成", FAILURE: "失敗" }[runtime.status];
+  return `<section class="side-challenge-detail"><h3>本局小任務挑戰</h3><b>${definition.title}</b><p>${definition.description}</p><strong>${status}</strong></section>`;
 }
 
 function canUsePocketItem(item) {
@@ -412,17 +760,33 @@ function canAttemptPocketItemUse(item) {
   return canUsePocketItem(item);
 }
 
+function renderInventorySlots({ readOnly = false } = {}) {
+  return Array.from({ length: 3 }, (_, index) => {
+    const item = itemById(game.items[index]);
+    if (!item) return `<article class="item-slot empty"><b>空道具格</b><span>尚未取得道具</span></article>`;
+    const pocketAction = !readOnly && item.type === "ACTIVE" ? `<button type="button" data-use-item-index="${index}" ${canAttemptPocketItemUse(item) ? "" : "disabled"}>使用</button>` : "";
+    const selfSelectAction = !readOnly && item.id === "self-select-ticket" && game.mode === GAME_MODES.EXPERIMENTAL
+      ? `<button type="button" data-use-self-select-index="${index}" ${canUseSelfSelectTicket() ? "" : "disabled"}>使用</button>` : "";
+    const action = pocketAction || selfSelectAction;
+    return `<article class="item-slot"><b>${item.icon ? `${item.icon} ` : ""}${item.title}</b><span>${item.description}</span>${action}</article>`;
+  }).join("");
+}
+
+function openPreRoundInventory() {
+  if (game.state !== GAME_STATES.PRE_ROUND || game.busy || game.uiOverlayOpen) return false;
+  game.uiOverlayOpen = true;
+  const count = `${game.items.length}/3${game.items.length >= 3 ? "・已滿" : ""}`;
+  openModal({ icon: "具", kicker: "INVENTORY", title: `目前道具 ${count}`, body: `<div class="item-status pre-round-inventory"><section><div class="item-slots">${renderInventorySlots({ readOnly: true })}</div></section><small>開局準備期間僅供查看，道具請於指定流程使用。</small></div>`, actions: [{ label: "關閉", action: closeItemStatus }] });
+  return true;
+}
+
 function openItemStatus() {
   if (game.state !== GAME_STATES.DRAWING || game.busy || game.uiOverlayOpen) return;
   game.uiOverlayOpen = true;
-  const slots = Array.from({ length: 3 }, (_, index) => {
-    const item = itemById(game.items[index]);
-    if (!item) return `<article class="item-slot empty"><b>空道具格</b><span>尚未取得道具</span></article>`;
-    const action = item.type === "ACTIVE" ? `<button type="button" data-use-item-index="${index}" ${canAttemptPocketItemUse(item) ? "" : "disabled"}>使用</button>` : "";
-    return `<article class="item-slot"><b>${item.title}</b><span>${item.description}</span>${action}</article>`;
-  }).join("");
-  openModal({ icon: "具", kicker: "ITEM / STATUS", title: "道具 / 狀態", body: `<div class="item-status"><section><h3>目前道具</h3><div class="item-slots">${slots}</div></section><section><h3>目前狀態</h3><p>${currentRoundStatusText()}</p></section><small>點一下右側「已抽牌型」即可查看牌型</small></div>`, actions: [{ label: "關閉", action: closeItemStatus }] });
+  const slots = renderInventorySlots();
+  openModal({ icon: "具", kicker: "ITEM / STATUS", title: "道具 / 狀態", body: `<div class="item-status"><section><h3>目前道具</h3><div class="item-slots">${slots}</div></section>${renderSideChallengeDetail()}<section><h3>目前狀態</h3><p>${currentRoundStatusText()}</p></section><small>點一下右側「已抽牌型」即可查看牌型</small></div>`, actions: [{ label: "關閉", action: closeItemStatus }] });
   elements.modalBody.querySelectorAll("[data-use-item-index]").forEach(button => button.addEventListener("click", () => beginPocketItemUse(Number(button.dataset.useItemIndex))));
+  elements.modalBody.querySelectorAll("[data-use-self-select-index]").forEach(button => button.addEventListener("click", () => beginSelfSelectTicketDraw(Number(button.dataset.useSelfSelectIndex))));
 }
 
 function closeItemStatus() { game.uiOverlayOpen = false; closeModal(); }
@@ -638,6 +1002,39 @@ function selectMiniGameForRound(random = Math.random) {
   return available[Math.floor(random() * available.length)] ?? null;
 }
 
+function canUseSelfSelectTicket() {
+  return game.mode === GAME_MODES.EXPERIMENTAL && game.state === GAME_STATES.DRAWING && game.round?.committed && !game.busy && getRemainingFormalTiles({ includeSpecial: true }).length > 0;
+}
+
+function beginSelfSelectTicketDraw(index) {
+  if (!canUseSelfSelectTicket() || game.items[index] !== "self-select-ticket") return false;
+  const candidates = sortFormalTilesForPicker(getRemainingFormalTiles({ includeSpecial: true }));
+  if (!candidates.length) return false;
+  game.items.splice(index, 1);
+  game.state = GAME_STATES.SELF_SELECT_DRAW;
+  closeItemStatus();
+  updateHUD();
+  return openTilePicker({
+    title: "使用自選券", message: "選一張牌取代本次普通摸牌", tiles: candidates,
+    confirmText: "決定", allowOverview: true, allowCancel: false,
+    onConfirm: confirmSelfSelectTicketDraw
+  });
+}
+
+async function confirmSelfSelectTicketDraw(tileId) {
+  if (game.mode !== GAME_MODES.EXPERIMENTAL || game.state !== GAME_STATES.SELF_SELECT_DRAW) return false;
+  const selected = getRemainingFormalTiles({ includeSpecial: true }).find(tile => tile.id === tileId);
+  if (!selected || !placeTileAtNextFormalDraw(selected.id)) return false;
+  closeTilePicker();
+  game.state = GAME_STATES.DRAWING;
+  return acquireFormalTile(selected, { suppressEvent: true });
+}
+
+function selectInterRoundMiniGame(random = Math.random) {
+  const available = getAvailableMiniGames();
+  return available[Math.floor(random() * available.length)] ?? null;
+}
+
 function getRemainingFormalTiles({ includeSpecial = false } = {}) {
   return [...game.round.hand.slice(game.round.drawIndex), ...game.round.remaining]
     .filter(tile => (includeSpecial || !tile.special) && !isOfficiallyDrawn(tile.id));
@@ -663,7 +1060,7 @@ function placeTileAtNextFormalDraw(tileId) {
 }
 
 function shouldOfferMiniGame() {
-  return game.state === GAME_STATES.DRAWING && game.round.drawIndex === 12 && !game.round.miniGame.offered && !game.round.miniGame.completed;
+  return game.mode === GAME_MODES.PRODUCTION && game.state === GAME_STATES.DRAWING && game.round.drawIndex === 12 && !game.round.miniGame.offered && !game.round.miniGame.completed;
 }
 
 function openMiniGameOffer() {
@@ -689,6 +1086,15 @@ function startMiniGame() {
   const definition = MINIGAME_DEFINITIONS[game.round.miniGame.selectedId];
   if (!definition?.enabled) return directDrawMiniGameTile();
   game.state = GAME_STATES.MINIGAME_ACTIVE;
+  return launchMiniGame(definition);
+}
+
+function sortFormalTilesForPicker(tiles) {
+  const order = new Map(GAME_TILES.map((tile, index) => [tile.id, index]));
+  return [...tiles].sort((left, right) => (order.get(left.id) ?? Number.MAX_SAFE_INTEGER) - (order.get(right.id) ?? Number.MAX_SAFE_INTEGER));
+}
+
+function launchMiniGame(definition) {
   if (definition.implementation === "MEMORY_MASTER") return startMemoryMaster();
   if (definition.implementation === "PAJUR") return startPaJuR();
   if (definition.implementation === "BASEBALL9") return startBaseball9();
@@ -701,7 +1107,7 @@ function startMiniGame() {
 }
 
 function startMemoryMaster(random = Math.random) {
-  if (game.state !== GAME_STATES.MINIGAME_ACTIVE || game.round.miniGame.memory) return false;
+  if (!isMiniGameChallengeState() || game.round.miniGame.memory) return false;
   openModal({ icon: "🧠", kicker: "", title: "記憶大師", body: '<div class="memory-master-host" data-memory-master-root></div>', actions: [] });
   const container = elements.modalBody.querySelector("[data-memory-master-root]");
   const controller = MemoryMaster.start({
@@ -726,7 +1132,7 @@ function clearMemoryMasterState() {
 }
 
 function startPaJuR(random = Math.random) {
-  if (game.state !== GAME_STATES.MINIGAME_ACTIVE || game.round.miniGame.pajur) return false;
+  if (!isMiniGameChallengeState() || game.round.miniGame.pajur) return false;
   openModal({ icon: "🎯", kicker: "", title: "彈珠台", body: '<div class="pajur-host" data-pajur-root></div>', actions: [] });
   const container = elements.modalBody.querySelector("[data-pajur-root]");
   const controller = PaJuR.start({
@@ -751,7 +1157,7 @@ function clearPaJuRState() {
 }
 
 function startBaseball9(random = Math.random) {
-  if (game.state !== GAME_STATES.MINIGAME_ACTIVE || game.round.miniGame.baseball9) return false;
+  if (!isMiniGameChallengeState() || game.round.miniGame.baseball9) return false;
   openModal({ icon: "⚾", kicker: "", title: "棒球九宮格", body: '<div class="baseball9-host" data-baseball9-root></div>', actions: [] });
   const container = elements.modalBody.querySelector("[data-baseball9-root]");
   const controller = Baseball9.start({
@@ -787,9 +1193,10 @@ function directDrawMiniGameTile() {
 }
 
 function resolveMiniGameChallenge(result) {
-  if (game.state !== GAME_STATES.MINIGAME_ACTIVE || game.round.miniGame.completed || game.round.miniGame.challengeResolved || typeof result?.success !== "boolean") return false;
+  if (!isMiniGameChallengeState() || game.round.miniGame.completed || game.round.miniGame.challengeResolved || typeof result?.success !== "boolean") return false;
   game.round.miniGame.challengeResolved = true;
   game.round.miniGame.challengeResult = result.success ? "SUCCESS" : "FAILURE";
+  if (game.round.miniGame.interRound) return completeInterRoundMiniGame(result);
   if (!result.success) {
     openModal({
       icon: "🎮", kicker: "", title: "挑戰失敗",
@@ -800,6 +1207,108 @@ function resolveMiniGameChallenge(result) {
   }
   notifyScore("挑戰成功！選一張你想要的牌", { type: "achievement", duration: 1800 });
   return openMiniGameRewardPicker();
+}
+
+function openInterRoundMiniGameInvitation(random = Math.random) {
+  if (game.mode !== GAME_MODES.EXPERIMENTAL || game.state !== GAME_STATES.ROUND_END || attemptsRemaining() <= 0) return false;
+  if (typeof random !== "function") random = Math.random;
+  clearMiniGameLifecycle();
+  const definition = selectInterRoundMiniGame(random);
+  if (!definition) return startRound();
+  game.round.miniGame = createMiniGameState({ interRound: true });
+  game.round.miniGame.offered = true;
+  game.round.miniGame.selectedId = definition.id;
+  game.state = GAME_STATES.INTER_ROUND_INVITATION;
+  game.stats.miniGameInvitationCount += 1;
+  openModal({
+    icon: "🎮", kicker: "參加小遊戲 好禮等著你", title: `這次的遊戲是：${definition.name}`,
+    body: "<p>挑戰成功即可選擇一張獎勵券。</p>",
+    actions: [{ label: "跳過", className: "secondary", action: skipInterRoundMiniGame }, { label: "參加", action: startInterRoundMiniGame }]
+  });
+  return true;
+}
+
+function startInterRoundMiniGame() {
+  if (game.mode !== GAME_MODES.EXPERIMENTAL || game.state !== GAME_STATES.INTER_ROUND_INVITATION || !game.round?.miniGame?.interRound) return false;
+  const definition = MINIGAME_DEFINITIONS[game.round.miniGame.selectedId];
+  if (!definition?.enabled) return skipInterRoundMiniGame();
+  game.stats.miniGameParticipatedCount += 1;
+  game.state = GAME_STATES.INTER_ROUND_MINIGAME;
+  return launchMiniGame(definition);
+}
+
+function skipInterRoundMiniGame() {
+  const miniGame = game.round?.miniGame;
+  if (game.mode !== GAME_MODES.EXPERIMENTAL || game.state !== GAME_STATES.INTER_ROUND_INVITATION || !miniGame?.interRound || miniGame.completed) return false;
+  miniGame.completed = true;
+  game.stats.miniGameSkipCount += 1;
+  closeModal();
+  startRound();
+  return true;
+}
+
+function completeInterRoundMiniGame(result) {
+  const miniGame = game.round?.miniGame;
+  if (game.state !== GAME_STATES.INTER_ROUND_MINIGAME || !miniGame?.interRound || miniGame.completed) return false;
+  miniGame.completed = true;
+  game.interRoundMiniGameResults.push({ id: miniGame.selectedId, success: result.success });
+  game.stats[result.success ? "miniGameSuccessCount" : "miniGameFailureCount"] += 1;
+  if (result.success && Object.hasOwn(game.stats.miniGameSuccessById, miniGame.selectedId)) game.stats.miniGameSuccessById[miniGame.selectedId] += 1;
+  clearMiniGameLifecycle();
+  if (result.success) return openInterRoundRewardSelection();
+  closeModal();
+  startRound();
+  return true;
+}
+
+function openInterRoundRewardSelection() {
+  if (game.mode !== GAME_MODES.EXPERIMENTAL) return false;
+  const tickets = getTicketDefinitions();
+  game.state = GAME_STATES.INTER_ROUND_REWARD;
+  openModal({
+    icon: "🎟️", kicker: "小遊戲成功！", title: "選擇一張獎勵券",
+    body: `<div class="ticket-reward-options">${tickets.map(item => `<button type="button" data-ticket-reward-id="${item.id}"><b class="ticket-icon">${item.icon}</b><strong>${item.title}</strong><span>${item.description}</span></button>`).join("")}</div>`,
+    actions: []
+  });
+  elements.modalBody.querySelectorAll("[data-ticket-reward-id]").forEach(button => button.addEventListener("click", () => selectInterRoundReward(button.dataset.ticketRewardId)));
+  return true;
+}
+
+function selectInterRoundReward(itemId) {
+  if (game.state !== GAME_STATES.INTER_ROUND_REWARD) return false;
+  const ticket = getTicketDefinitions().find(item => item.id === itemId);
+  if (!ticket) return false;
+  if (game.items.length < 3) {
+    game.state = GAME_STATES.INTER_ROUND_REWARD_REPLACEMENT;
+    game.items.push(ticket.id);
+    updateHUD();
+    notifyScore(`獲得道具：${ticket.title}`, { type: "achievement", duration: 1800 });
+    startRound();
+    return true;
+  }
+  game.pendingInterRoundRewardId = ticket.id;
+  game.state = GAME_STATES.INTER_ROUND_REWARD_REPLACEMENT;
+  openInterRoundRewardReplacement();
+  return true;
+}
+
+function openInterRoundRewardReplacement() {
+  const incoming = itemById(game.pendingInterRoundRewardId);
+  if (!incoming || game.state !== GAME_STATES.INTER_ROUND_REWARD_REPLACEMENT) return false;
+  openModal({ icon: incoming.icon, kicker: "道具欄已滿", title: `獲得：${incoming.title}`, body: `<p>請選擇一個舊道具替換。</p><div class="item-replacement-options">${game.items.map((itemId, index) => { const item = itemById(itemId); return `<button type="button" data-ticket-replace-index="${index}"><b>${item.title}</b><span>${item.description}</span></button>`; }).join("")}</div>`, actions: [] });
+  elements.modalBody.querySelectorAll("[data-ticket-replace-index]").forEach(button => button.addEventListener("click", () => completeInterRoundRewardReplacement(Number(button.dataset.ticketReplaceIndex))));
+  return true;
+}
+
+function completeInterRoundRewardReplacement(index) {
+  if (game.state !== GAME_STATES.INTER_ROUND_REWARD_REPLACEMENT || !game.pendingInterRoundRewardId || index < 0 || index >= game.items.length) return false;
+  const ticket = itemById(game.pendingInterRoundRewardId);
+  game.items[index] = ticket.id;
+  game.pendingInterRoundRewardId = null;
+  updateHUD();
+  notifyScore(`道具已替換為：${ticket.title}`, { type: "achievement", duration: 1800 });
+  startRound();
+  return true;
 }
 
 function completeFailureMiniGameDraw() {
@@ -818,7 +1327,7 @@ function completeRandomMiniGameDraw() {
 
 function openMiniGameRewardPicker() {
   if (game.state !== GAME_STATES.MINIGAME_ACTIVE || game.round.miniGame.challengeResult !== "SUCCESS" || game.round.miniGame.completed) return false;
-  const candidates = getRemainingFormalTiles({ includeSpecial: true });
+  const candidates = sortFormalTilesForPicker(getRemainingFormalTiles({ includeSpecial: true }));
   if (!candidates.length) {
     console.warn("Mini-game reward has no legal tile candidates; using safe normal draw recovery.");
     return completeRandomMiniGameDraw();
@@ -836,7 +1345,7 @@ async function confirmMiniGameReward(tileId) {
   if (game.state !== GAME_STATES.MINIGAME_REWARD || game.round.miniGame.completed) return false;
   const selected = getRemainingFormalTiles({ includeSpecial: true }).find(tile => tile.id === tileId);
   if (!selected) {
-    const candidates = getRemainingFormalTiles({ includeSpecial: true });
+    const candidates = sortFormalTilesForPicker(getRemainingFormalTiles({ includeSpecial: true }));
     if (!candidates.length) {
       console.warn("Mini-game reward selection became empty; using safe normal draw recovery.");
       closeTilePicker();
@@ -863,12 +1372,13 @@ async function completeMiniGameFormalDraw(selected, acquireOptions = {}) {
 }
 
 function clearMiniGameLifecycle() {
+  clearSideChallengeRevealPresentation();
   if (!game.round?.miniGame) return;
   clearMemoryMasterState();
   clearPaJuRState();
   clearBaseball9State();
   game.round.tilePicker = null;
-  if ([GAME_STATES.MINIGAME_OFFER, GAME_STATES.MINIGAME_ACTIVE, GAME_STATES.MINIGAME_REWARD].includes(game.state)) game.round.miniGame.completed = true;
+  if ([GAME_STATES.MINIGAME_OFFER, GAME_STATES.MINIGAME_ACTIVE, GAME_STATES.MINIGAME_REWARD, GAME_STATES.INTER_ROUND_INVITATION, GAME_STATES.INTER_ROUND_MINIGAME].includes(game.state)) game.round.miniGame.completed = true;
 }
 
 async function drawTile() {
@@ -885,9 +1395,8 @@ async function acquireFormalTile(tile, { suppressEvent = false } = {}) {
   game.round.drawn.add(tile.id);
   await animateStackTile(tile);
   game.round.drawIndex += 1;
-  if (!tile.special || suppressEvent) {
-    applyOfficialTileEffects(tile);
-  }
+  game.round.lastAcquiredTileId = tile.id;
+  applyOfficialTileEffects(tile);
   game.busy = false;
   updateHUD();
   elements.message.textContent = "";
@@ -927,6 +1436,7 @@ function applyOfficialTileEffects(tile) {
   scoreLines();
   scoreCollections();
   updateWaitingLines();
+  evaluateSideChallengeAfterAcquisition(tile);
 }
 
 function lineTileIds(line) { return line.indexes.map(index => game.round.board[index].id); }
@@ -949,6 +1459,7 @@ function scoreLines() {
     flashLine(line, "line-flash");
     if (ordinal === 1 && game.round.drawIndex === game.round.formalDrawCount) {
       awardOnce("last-tile-first-line", SCORE_CONFIG.special.lastTileFirstLine, "海底撈月！");
+      game.round.lastTileCelebrationPending = true;
     }
   }
 }
@@ -1008,8 +1519,7 @@ function currentWaitingLines() {
     if (game.round.completedLines.has(line.id)) return false;
     const ids = lineTileIds(line);
     if (ids.filter(isOfficiallyDrawn).length !== 5) return false;
-    const missingId = ids.find(id => !isOfficiallyDrawn(id));
-    return !GAME_TILES.find(tile => tile.id === missingId)?.special;
+    return true;
   });
 }
 
@@ -1048,7 +1558,34 @@ function flashLine(line, className) {
 
 function continueAfterDraw() {
   if (game.state !== GAME_STATES.DRAWING) return;
+  if (game.round.lastTileCelebrationPending && !game.round.lastTileCelebrationPlayed) return playLastTileCelebration();
   if (game.round.drawIndex === game.round.formalDrawCount) setTimeout(finishRegularDraws, 250);
+}
+
+function createMiniGameState({ interRound = false } = {}) {
+  return { offered: false, completed: false, selectedId: null, challengeResult: null, challengeResolved: false, failureDrawStarted: false, interRound, memory: null, pajur: null, baseball9: null };
+}
+
+function playLastTileCelebration(onComplete = continueAfterDraw) {
+  if (!game.round?.lastTileCelebrationPending || game.round.lastTileCelebrationPlayed) return false;
+  game.round.lastTileCelebrationPending = false;
+  game.round.lastTileCelebrationPlayed = true;
+  game.busy = true;
+  const tile = elements.board.querySelector(`[data-tile-id="${game.round.lastAcquiredTileId}"]`);
+  tile?.classList.add("last-tile-celebration");
+  elements.board.classList.add("last-tile-board-celebration");
+  notifyScore("海底撈月！", { type: "achievement", duration: 1100 });
+  setTimeout(() => {
+    tile?.classList.remove("last-tile-celebration");
+    elements.board.classList.remove("last-tile-board-celebration");
+    game.busy = false;
+    onComplete();
+  }, 1100);
+  return true;
+}
+
+function isMiniGameChallengeState() {
+  return game.state === GAME_STATES.MINIGAME_ACTIVE || game.state === GAME_STATES.INTER_ROUND_MINIGAME;
 }
 
 function findWaitingMissingTiles() {
@@ -1174,7 +1711,7 @@ function selectBonusTile(event) {
   game.round.selectedBonusTiles.push(tile);
   elements.bonusCount.textContent = `已選 ${game.round.selectedBonusTiles.length} / ${RULES.bonusChoices}`;
   game.round.bonusCandidates = [...game.round.selectedBonusTiles];
-  const hit = !tile.special && game.round.bonusMissing.has(tile.id);
+  const hit = game.round.bonusMissing.has(tile.id);
   if (hit || game.round.selectedBonusTiles.length === RULES.bonusChoices) {
     elements.bonusGrid.querySelectorAll("button").forEach(item => { item.disabled = true; });
     if (hit) {
@@ -1190,13 +1727,13 @@ function selectBonusTile(event) {
 function resolveBonusDraw() {
   if (game.state !== GAME_STATES.BONUS_DRAW || game.round.bonusResolved) return;
   game.round.bonusResolved = true;
-  const success = game.round.bonusCandidates.some(tile => !tile.special && game.round.bonusMissing.has(tile.id));
+  const success = game.round.bonusCandidates.some(tile => game.round.bonusMissing.has(tile.id));
   if (success) {
     game.stats.bonusSuccessCount += 1;
     game.round.bonusAttemptGain = grantAttempts(1);
     game.stats.extraRoundsFromBonus += game.round.bonusAttemptGain;
   }
-  const hits = game.round.bonusCandidates.filter(tile => !tile.special && game.round.bonusMissing.has(tile.id));
+  const hits = game.round.bonusCandidates.filter(tile => game.round.bonusMissing.has(tile.id));
   hits.forEach(tile => {
     const index = game.round.remaining.findIndex(item => item.id === tile.id);
     elements.bonusGrid.querySelector(`[data-index="${index}"]`)?.classList.add("bonus-hit");
@@ -1214,7 +1751,6 @@ function openEventChoice(tile) {
   game.state = GAME_STATES.EVENT_REVEAL;
   game.pendingSpecial = { tile, resolved: false, result: null };
   game.stats.eventTriggeredCount += 1;
-  applyOfficialTileEffects(tile);
   updateHUD();
   openModal({
     icon: tile.glyph, kicker: `${tile.label}・夜市事件牌`, title: "事件揭曉中……",
@@ -1356,8 +1892,14 @@ function finishSpecialEvent() {
   game.pendingSpecial = null;
   closeModal();
   if (result.restartRound) return restartCurrentRound();
-  if (result.gameOver) return endRound(false, false, true);
-  if (result.endRound) return endRound(false, false);
+  if (result.gameOver) {
+    if (game.round.lastTileCelebrationPending && !game.round.lastTileCelebrationPlayed) return playLastTileCelebration(() => endRound(false, false, true));
+    return endRound(false, false, true);
+  }
+  if (result.endRound) {
+    if (game.round.lastTileCelebrationPending && !game.round.lastTileCelebrationPlayed) return playLastTileCelebration(() => endRound(false, false));
+    return endRound(false, false);
+  }
   game.state = GAME_STATES.DRAWING;
   updateHUD();
   continueAfterDraw();
@@ -1377,6 +1919,7 @@ function restartCurrentRound() {
   replacement.roundMultiplier = previous.config.leverageMultiplier;
   replacement.finalMultiplier = previous.config.finalMultiplier;
   replacement.leverageConfigured = previous.leverageConfigured;
+  replacement.sideChallenge = previous.sideChallenge ? { ...previous.sideChallenge, status: "ACTIVE", awarded: false } : null;
   game.round = replacement;
   game.busy = false;
   elements.preRoundPanel.classList.add("hidden");
@@ -1416,16 +1959,20 @@ function settleBets() {
   if (game.round.betSettled) return game.round.betResult ? [game.round.betResult] : [];
   game.round.betSettled = true;
   const betId = game.round.config?.activeBetId;
-  const bet = PRE_ROUND_EVENT_DEFINITIONS.find(event => event.id === betId && event.type === "BET");
+  const bet = game.round.config?.eventConfig?.type === "BET"
+    ? game.round.config.eventConfig
+    : PRE_ROUND_EVENT_DEFINITIONS.find(event => event.id === betId && event.type === "BET");
   if (!bet) return [];
   const won = betConditionMet(bet);
-  const requested = won ? bet.reward : -betPenalty(bet);
+  const basePoints = won ? bet.reward : -betPenalty(bet);
+  const multiplier = game.mode === GAME_MODES.EXPERIMENTAL ? game.round.finalMultiplier : 1;
+  const requested = basePoints * multiplier;
   addTotalPoints(requested);
-  addRoundScoreBreakdown({ key: `bet:${bet.id}:${won ? "won" : "lost"}`, label: won ? "下注成功" : "下注失敗", points: requested, affectedByMultiplier: false });
+  addRoundScoreBreakdown({ key: `bet:${bet.id}:${won ? "won" : "lost"}`, label: won ? "下注成功" : "下注失敗", points: game.mode === GAME_MODES.EXPERIMENTAL ? basePoints : requested, affectedByMultiplier: game.mode === GAME_MODES.EXPERIMENTAL });
   const stat = game.stats.betStats[bet.id];
   game.stats.betsPlaced += 1;
   game.stats[won ? "betsWon" : "betsLost"] += 1;
-  game.stats[won ? "betScoreGain" : "betScoreLoss"] += won ? bet.reward : betPenalty(bet);
+  game.stats[won ? "betScoreGain" : "betScoreLoss"] += Math.abs(requested);
   stat.played += 1;
   stat[won ? "won" : "lost"] += 1;
   game.round.betResult = { bet, won, points: requested };
@@ -1461,10 +2008,15 @@ function renderScoreBreakdown() {
   }).join("");
 }
 
+function hasNextRoundAfterSettlement(forceGameOver = false) {
+  return !forceGameOver && attemptsRemaining() > 0;
+}
+
 function endRound(hadBonus, bonusSuccess, forceGameOver = false) {
   hideTileOverview();
   clearMiniGameLifecycle();
   game.state = GAME_STATES.ROUND_END;
+  resolveSideChallengeAtRoundEnd();
   const totalBefore = game.score;
   settleRoundPoints();
   const betResults = settleBets();
@@ -1473,11 +2025,12 @@ function endRound(hadBonus, bonusSuccess, forceGameOver = false) {
   recordCompletedRoundStats();
   recordRoundHighs();
   updateHUD();
-  const gameEnded = forceGameOver || attemptsRemaining() === 0;
+  const gameEnded = !hasNextRoundAfterSettlement(forceGameOver);
+  const continueAction = game.mode === GAME_MODES.EXPERIMENTAL ? openInterRoundMiniGameInvitation : startRound;
   openModal({
     icon: bonusSuccess ? "＋1" : "結", kicker: `ROUND RESULT・第 ${game.roundsPlayed} 局`, title: "單局結算",
-    body: `<div class="round-result"><section class="round-result-change"><small>本局最終變化</small><strong class="${getRoundPointColorClass(game.round.finalRoundChange)}">${formatSignedScore(game.round.finalRoundChange)}</strong></section><section class="score-breakdown" aria-label="本局分數明細">${renderScoreBreakdown()}</section><section class="result-total"><small>目前總分</small><strong data-round-total>${totalBefore}</strong></section></div>`,
-    actions: [{ label: gameEnded ? "查看最終成績" : "下一局", action: gameEnded ? showGameOver : startRound }]
+    body: `<div class="round-result"><section class="round-result-change"><small>本局最終變化</small><strong class="${getRoundPointColorClass(game.round.finalRoundChange)}">${formatSignedScore(game.round.finalRoundChange)}</strong></section>${renderSideChallengeSettlement()}<section class="score-breakdown" aria-label="本局分數明細">${renderScoreBreakdown()}</section><section class="result-total"><small>目前總分</small><strong data-round-total>${totalBefore}</strong></section></div>`,
+    actions: [{ label: gameEnded ? "查看最終成績" : game.mode === GAME_MODES.EXPERIMENTAL ? "繼續" : "下一局", action: gameEnded ? showGameOver : continueAction }]
   });
   animateRoundTotal(totalBefore, game.score);
 }
@@ -1495,19 +2048,36 @@ function animateRoundTotal(from, to) {
   requestAnimationFrame(tick);
 }
 
-function showGameOver() {
+async function showGameOver() {
+  if (game.leaderboardGameOverComplete) return renderGameOverModal();
+  if (game.leaderboardGameOverProcessing) return false;
   hideTileOverview();
   clearMiniGameLifecycle();
   game.state = GAME_STATES.GAME_OVER;
   game.busy = false;
   recordRoundHighs();
   updateHUD();
+  const qualification = evaluateLeaderboardQualification(game.score, game.leaderboardSnapshotValid ? game.leaderboardSnapshot : null);
+  game.leaderboardQualifiedHighest = qualification.mode === "highest";
+  game.leaderboardQualifiedLowest = qualification.mode === "lowest";
+  game.leaderboardQualificationMode = qualification.mode;
+  game.leaderboardGameOverProcessing = true;
+  if (qualification.mode) {
+    showLeaderboardProcessing(qualification.mode === "highest" ? "有不得了的事正在發生..." : "欸你好像....");
+    await submitGameOverScore();
+  }
+  game.leaderboardGameOverProcessing = false;
+  game.leaderboardGameOverComplete = true;
+  renderGameOverModal();
+  return true;
+}
+
+function renderGameOverModal() {
   openModal({
     icon: "🏆", kicker: "", title: "今晚收攤啦！",
     body: buildScoreReport(),
     actions: [{ label: "🏆 排行榜", className: "secondary", action: openLeaderboardFromGameOver }, { label: "再玩一場", action: resetGame }, { label: "回主選單", className: "secondary", action: returnToMainMenu }]
   });
-  void submitGameOverScore();
 }
 
 function recordRoundHighs() {
@@ -1535,7 +2105,11 @@ const ACHIEVEMENT_DEFINITIONS = Object.freeze([
   { id: "wanMaster", name: "萬老師", description: "本場累計取得 30 張以上萬子。", evaluate: s => s.wanTiles >= 30 },
   { id: "suoMaster", name: "事情大條", description: "本場累計取得 30 張以上條子。", evaluate: s => s.suoTiles >= 30 },
   { id: "tongMaster", name: "筒神", description: "本場累計取得 30 張以上筒子。", evaluate: s => s.tongTiles >= 30 },
-  { id: "windMaster", name: "風起雲湧", description: "本場累計取得 10 張以上風牌。", evaluate: s => s.windTiles >= 10 }
+  { id: "windMaster", name: "風起雲湧", description: "本場累計取得 10 張以上風牌。", evaluate: s => s.windTiles >= 10 },
+  { id: "gameKing", name: "遊戲王", description: "所有局間小遊戲都參加並挑戰成功。", evaluate: s => s.mode === GAME_MODES.EXPERIMENTAL && s.miniGameInvitations > 0 && s.miniGameParticipated === s.miniGameInvitations && s.miniGameSuccesses === s.miniGameInvitations },
+  { id: "pajurMaster", name: "珠珠寶貝", description: "彈珠台挑戰成功至少 3 次。", evaluate: s => s.mode === GAME_MODES.EXPERIMENTAL && s.pajurSuccesses >= 3 },
+  { id: "baseballAce", name: "王牌投手", description: "棒球九宮格挑戰成功至少 3 次。", evaluate: s => s.mode === GAME_MODES.EXPERIMENTAL && s.baseballSuccesses >= 3 },
+  { id: "memoryMaster", name: "記憶體", description: "記憶大師挑戰成功至少 3 次。", evaluate: s => s.mode === GAME_MODES.EXPERIMENTAL && s.memorySuccesses >= 3 }
 ]);
 
 function buildAchievementStats(source = game) {
@@ -1549,6 +2123,15 @@ function buildAchievementStats(source = game) {
     betsPlaced: source.stats.betsPlaced, betsWon: source.stats.betsWon, betsLost: source.stats.betsLost,
     lastTileFirstLineCount: source.stats.lastTileFirstLineCount, earlyWaitingCount: source.stats.earlyWaitingCount,
     activeItemUses: source.stats.activeItemUses,
+    mode: source.mode,
+    miniGameInvitations: source.stats.miniGameInvitationCount ?? 0,
+    miniGameParticipated: source.stats.miniGameParticipatedCount ?? 0,
+    miniGameSuccesses: source.stats.miniGameSuccessCount ?? 0,
+    miniGameFailures: source.stats.miniGameFailureCount ?? 0,
+    miniGameSkips: source.stats.miniGameSkipCount ?? 0,
+    pajurSuccesses: source.stats.miniGameSuccessById?.pachinko ?? 0,
+    baseballSuccesses: source.stats.miniGameSuccessById?.baseball9 ?? 0,
+    memorySuccesses: source.stats.miniGameSuccessById?.memoryMaster ?? 0,
     everyRoundRed: rounds.every(round => round.tileIds.includes("red")),
     everyRoundGreen: rounds.every(round => round.tileIds.includes("green")),
     everyRoundWhite: rounds.every(round => round.tileIds.includes("white")),
@@ -1567,11 +2150,15 @@ function buildScoreReport() {
   const list = earned.length
     ? earned.map(achievement => `<article class="achievement-card"><b>🏆 ${escapeHtml(achievement.name)}</b><p>${escapeHtml(achievement.description)}</p></article>`).join("")
     : '<p class="achievement-empty">這場沒有取得稱號</p>';
-  return `<div class="game-over-report"><section class="game-over-final"><strong class="game-over-score">${game.score}</strong><small>最終分數</small><p class="leaderboard-submit-status" data-leaderboard-submit-status>${leaderboardSubmissionLabel()}</p></section><section class="achievement-report"><h3>本場獲得稱號</h3><div class="achievement-list">${list}</div></section></div>`;
+  const leaderboardResults = game.leaderboardSubmissionStatus === "success"
+    ? [game.leaderboardQualificationMode === "highest" ? "🏆 本次成績進入最高 TOP 20！" : "", game.leaderboardQualificationMode === "lowest" ? "💀 本次成績進入最低 TOP 20！" : ""].filter(Boolean)
+    : [];
+  const qualification = leaderboardResults.length ? `<div class="leaderboard-qualified">${leaderboardResults.map(message => `<span>${message}</span>`).join("")}</div>` : "";
+  return `<div class="game-over-report"><section class="game-over-final"><strong class="game-over-score">${game.score}</strong><small>最終分數</small>${qualification}<p class="leaderboard-submit-status" data-leaderboard-submit-status>${leaderboardSubmissionLabel()}</p></section><section class="achievement-report"><h3>本場獲得稱號</h3><div class="achievement-list">${list}</div></section></div>`;
 }
 
 function leaderboardSubmissionLabel() {
-  return ({ loading: "成績登錄中…", success: "成績已登錄排行榜！", failure: "排行榜上傳失敗" })[game.leaderboardSubmissionStatus] || "";
+  return ({ success: "成績已登錄排行榜！", failure: "排行榜上傳失敗", disabled: "進階模式：成績不會上傳排行榜" })[game.leaderboardSubmissionStatus] || "";
 }
 
 function updateLeaderboardSubmissionStatus() {
@@ -1579,11 +2166,17 @@ function updateLeaderboardSubmissionStatus() {
   if (status) status.textContent = leaderboardSubmissionLabel();
 }
 
-async function leaderboardRequest(options = {}) {
+function leaderboardUrl(mode = null) {
+  if (!mode) return LEADERBOARD_API_URL;
+  const separator = LEADERBOARD_API_URL.includes("?") ? "&" : "?";
+  return `${LEADERBOARD_API_URL}${separator}mode=${encodeURIComponent(mode)}`;
+}
+
+async function leaderboardRequest(options = {}, mode = null) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), LEADERBOARD_REQUEST_TIMEOUT_MS);
   try {
-    const response = await fetch(LEADERBOARD_API_URL, { ...options, signal: controller.signal });
+    const response = await fetch(leaderboardUrl(mode), { ...options, signal: controller.signal });
     if (!response.ok) throw new Error(`Leaderboard HTTP ${response.status}`);
     const data = await response.json();
     if (!data || data.success !== true) throw new Error(data?.error || "Leaderboard API error");
@@ -1594,22 +2187,65 @@ async function leaderboardRequest(options = {}) {
 }
 
 async function submitGameOverScore() {
-  if (game.leaderboardSubmitted) return;
+  if (game.leaderboardSubmitted) return game.leaderboardSubmissionStatus === "success";
   game.leaderboardSubmitted = true;
+  game.leaderboardPreparedPayload = { mode: game.leaderboardQualificationMode, name: game.playerName || EMPTY_PLAYER_DISPLAY_NAME, score: game.score };
+  if (!gameModeAllowsLeaderboardPost(game.mode)) {
+    game.leaderboardSubmissionStatus = "disabled";
+    return false;
+  }
   game.leaderboardSubmissionStatus = "loading";
-  updateLeaderboardSubmissionStatus();
   try {
     await leaderboardRequest({
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({ name: game.playerName || EMPTY_PLAYER_DISPLAY_NAME, score: game.score })
+      body: JSON.stringify(game.leaderboardPreparedPayload)
     });
     game.leaderboardSubmissionStatus = "success";
+    return true;
   } catch (error) {
     game.leaderboardSubmissionStatus = "failure";
     console.warn("Leaderboard score submission failed.", error);
+    return false;
   }
-  updateLeaderboardSubmissionStatus();
+}
+
+function normalizeLeaderboardRanking(data) {
+  if (!data || !Array.isArray(data.ranking)) throw new Error("Malformed leaderboard response");
+  const ranking = data.ranking.slice(0, 20).map(entry => ({ ...entry, score: Number(entry.score) }));
+  if (ranking.some(entry => !Number.isFinite(entry.score))) throw new Error("Malformed leaderboard score");
+  return ranking;
+}
+
+async function captureLeaderboardSnapshot() {
+  try {
+    const [highestData, lowestData] = await Promise.all([
+      leaderboardRequest({}, "highest"),
+      leaderboardRequest({}, "lowest")
+    ]);
+    const highest = normalizeLeaderboardRanking(highestData);
+    const lowest = normalizeLeaderboardRanking(lowestData);
+    return { valid: true, highest, lowest };
+  } catch (error) {
+    console.warn("Leaderboard snapshot unavailable; this game will not submit a score.", error);
+    return { valid: false, highest: [], lowest: [] };
+  }
+}
+
+function evaluateLeaderboardQualification(score, snapshot) {
+  if (!snapshot) return { mode: null, highest: false, lowest: false };
+  const highest = snapshot.highest.length < 20 || score >= snapshot.highest[19].score;
+  if (highest) return { mode: "highest", highest: true, lowest: false };
+  const lowest = snapshot.lowest.length < 20 || score <= snapshot.lowest[19].score;
+  return { mode: lowest ? "lowest" : null, highest: false, lowest };
+}
+
+function showLeaderboardProcessing(message) {
+  openModal({
+    icon: "🏆", kicker: "", title: "",
+    body: `<div class="leaderboard-processing"><strong>${message}</strong><span class="leaderboard-loading-dots" aria-label="處理中"><i></i><i></i><i></i></span></div>`,
+    actions: []
+  });
 }
 
 function openLeaderboardFromGameOver() {
@@ -1617,9 +2253,11 @@ function openLeaderboardFromGameOver() {
 }
 
 let leaderboardCloseAction = null;
+let leaderboardMode = "highest";
 
 function openLeaderboard(closeAction = null) {
   leaderboardCloseAction = closeAction;
+  setLeaderboardMode("highest", false);
   elements.leaderboardOverlay.classList.add("open");
   elements.leaderboardOverlay.setAttribute("aria-hidden", "false");
   renderLeaderboardMessage("排行榜載入中…", false);
@@ -1627,10 +2265,19 @@ function openLeaderboard(closeAction = null) {
   void loadLeaderboard();
 }
 
+function setLeaderboardMode(mode, shouldLoad = true) {
+  leaderboardMode = mode === "lowest" ? "lowest" : "highest";
+  elements.leaderboardHighest.classList.toggle("active", leaderboardMode === "highest");
+  elements.leaderboardLowest.classList.toggle("active", leaderboardMode === "lowest");
+  elements.leaderboardHighest.setAttribute("aria-pressed", String(leaderboardMode === "highest"));
+  elements.leaderboardLowest.setAttribute("aria-pressed", String(leaderboardMode === "lowest"));
+  if (shouldLoad) void loadLeaderboard();
+}
+
 async function loadLeaderboard() {
   renderLeaderboardMessage("排行榜載入中…", false);
   try {
-    const data = await leaderboardRequest();
+    const data = await leaderboardRequest({}, leaderboardMode);
     renderLeaderboard(data.ranking);
   } catch (error) {
     console.warn("Leaderboard fetch failed.", error);
@@ -1668,9 +2315,9 @@ function renderLeaderboard(ranking) {
   entries.forEach((entry, index) => {
     const rank = Number.isInteger(entry.rank) && entry.rank > 0 ? entry.rank : index + 1;
     const row = document.createElement("div");
-    row.className = `leaderboard-row${rank <= 3 ? ` leaderboard-top-${rank}` : ""}`;
+    row.className = `leaderboard-row${leaderboardMode === "highest" && rank <= 3 ? ` leaderboard-top-${rank}` : ""}`;
     const rankCell = document.createElement("strong");
-    rankCell.textContent = ["🥇", "🥈", "🥉"][rank - 1] || String(rank);
+    rankCell.textContent = leaderboardMode === "highest" ? (["🥇", "🥈", "🥉"][rank - 1] || String(rank)) : String(rank);
     const nameCell = document.createElement("span");
     nameCell.textContent = String(entry.name ?? "");
     const scoreCell = document.createElement("strong");
@@ -1734,6 +2381,12 @@ function updateHUD() {
   elements.roundScore.classList.remove("hud-score-gold", "hud-score-orange", "hud-score-red", "hud-score-purple", "hud-score-negative");
   elements.roundScore.classList.add(getRoundPointColorClass(displayedRoundPoints));
   elements.playerDisplay.textContent = game.playerName;
+  elements.gameModeIndicator.textContent = gameModeDisplayName(game.mode);
+  elements.gameModeIndicator.classList.remove("hidden");
+  elements.inventoryFullBadge.classList.toggle("hidden", game.items.length < 3);
+  elements.preRoundInventoryCount.textContent = game.items.length >= 3 ? "滿 3/3" : `${game.items.length}/3`;
+  elements.preRoundItemButton.classList.toggle("full", game.items.length >= 3);
+  renderSideChallengeStatus();
   const uiLocked = game.busy || game.uiOverlayOpen;
   elements.optionsButton.disabled = uiLocked || game.state !== GAME_STATES.DRAWING;
   elements.itemStatusButton.disabled = uiLocked || game.state !== GAME_STATES.DRAWING;
@@ -1811,13 +2464,17 @@ function buildScoringGuideContent() {
   return `<section class="help-section"><h3>分數獲得方式</h3><div class="rules-list scoring-guide"><p><b>玩法</b><span>${gameRule}</span></p><p><b>倍率</b><span>本局分數依倍率即時顯示</span></p><p><b>連線</b><span>第 1 條 +30 分<br>第 2 條 +60 分<br>第 3 條起每條 +90 分</span></p><p><b>牌型</b><span>萬／筒／條：5 張 +${SCORE_CONFIG.suit.five}、7 張累計 +${SCORE_CONFIG.suit.seven}、9 張累計 +${SCORE_CONFIG.suit.nine}<br>四風 +${SCORE_CONFIG.honor.fourWinds}／三元 +${SCORE_CONFIG.honor.threeDragons}</span></p><p><b>特殊成就</b><span>天聽 +${SCORE_CONFIG.special.earlyWaiting}<br>海底撈月 +${SCORE_CONFIG.special.lastTileFirstLine}</span></p></div></section>`;
 }
 
+function buildModeGuideContent() {
+  return `<section class="help-section"><h3>玩法模式</h3><div class="rules-list scoring-guide"><p><b>經典模式</b><span>專注原本摸麻將玩法，規則直接，挑戰高分。</span></p><p><b>進階模式</b><span>加入小任務挑戰、局間小遊戲與資源策略。</span></p></div></section>`;
+}
+
 function showHelp(closeAction) {
   const enabledEvents = EVENT_DEFINITIONS.filter(event => event.enabled);
   const totalWeight = enabledEvents.reduce((sum, event) => sum + event.weight, 0);
   const eventContent = `<section class="help-section"><h3>事件一覽</h3><div class="event-guide">${buildEventGuideSection("一般事件", enabledEvents.filter(event => event.category === "NORMAL"), totalWeight)}${buildEventGuideSection("特殊事件", enabledEvents.filter(event => event.category === "SPECIAL"), totalWeight)}</div></section>`;
   openModal({
     icon: "說", kicker: "遊戲說明", title: "說明",
-    body: `<div class="help-guide">${buildScoringGuideContent()}${eventContent}</div>`,
+    body: `<div class="help-guide">${buildModeGuideContent()}${buildScoringGuideContent()}${eventContent}</div>`,
     actions: [{ label: closeAction === returnToOptions ? "返回" : "關閉", action: closeAction }]
   });
   elements.modal.classList.add("status-sheet", "help-sheet");
@@ -1920,7 +2577,7 @@ function closeEventGuide() {
 function closeModal() {
   elements.modal.classList.remove("open");
   elements.modal.classList.remove("status-sheet", "betting-sheet", "help-sheet", "options-sheet");
-  elements.modal.classList.remove("normal-event-modal", "special-event-modal", "game-over-modal");
+  elements.modal.classList.remove("normal-event-modal", "special-event-modal", "game-over-modal", "side-challenge-reveal-modal");
   elements.modal.setAttribute("aria-hidden", "true");
 }
 
@@ -1949,18 +2606,32 @@ function savePlayerName(name) {
   catch { /* localStorage unavailable: the current game still keeps the name. */ }
 }
 
-function resetGame() {
-  const playerName = game.playerName;
-  clearMiniGameLifecycle();
-  game = freshGameState(playerName);
-  hideTileOverview();
+async function beginGameWithLeaderboardSnapshot(playerName, mode = GAME_MODES.PRODUCTION) {
+  if (game.busy) return false;
+  game = freshGameState(playerName, mode);
+  game.busy = true;
   elements.startScreen.classList.add("hidden");
+  showLeaderboardProcessing("攤位準備中…");
+  const snapshot = await captureLeaderboardSnapshot();
+  game.leaderboardSnapshotValid = snapshot.valid;
+  game.leaderboardSnapshot = snapshot.valid ? { highest: snapshot.highest, lowest: snapshot.lowest } : null;
+  game.busy = false;
+  closeModal();
+  hideTileOverview();
   elements.gameShell.classList.remove("hidden");
   startRound();
   enableGlyphFallback();
+  return snapshot.valid;
 }
 
-function startGame() {
+function resetGame() {
+  const playerName = game.playerName;
+  const mode = game.mode;
+  clearMiniGameLifecycle();
+  return beginGameWithLeaderboardSnapshot(playerName, mode);
+}
+
+function startGameInMode(mode) {
   const enteredPlayerName = elements.playerNameInput.value.trim().slice(0, 12);
   const playerName = enteredPlayerName || EMPTY_PLAYER_DISPLAY_NAME;
   if (enteredPlayerName) {
@@ -1968,13 +2639,11 @@ function startGame() {
     savePlayerName(enteredPlayerName);
   }
   elements.playerNameError.textContent = "";
-  game = freshGameState(playerName);
-  hideTileOverview();
-  elements.startScreen.classList.add("hidden");
-  elements.gameShell.classList.remove("hidden");
-  startRound();
-  enableGlyphFallback();
+  return beginGameWithLeaderboardSnapshot(playerName, mode);
 }
+
+function startGame() { return startGameInMode(GAME_MODES.PRODUCTION); }
+function startExperimentalGame() { return startGameInMode(GAME_MODES.EXPERIMENTAL); }
 
 function showStartScreen() {
   hideTileOverview();
@@ -2009,15 +2678,19 @@ function returnToMainMenu() {
 
 elements.optionsButton.addEventListener("click", openOptions);
 elements.itemStatusButton.addEventListener("click", openItemStatus);
+elements.preRoundItemButton.addEventListener("click", openPreRoundInventory);
 elements.drawStack.addEventListener("click", drawTile);
 elements.startRoundButton.addEventListener("click", commitRoundConfiguration);
 elements.preRoundSkipButton.addEventListener("click", selectPreRoundSkip);
 elements.tilePeekButton.addEventListener("click", showTileOverview);
 elements.tileOverviewClose.addEventListener("click", hideTileOverview);
 document.querySelector("#start-game-button").addEventListener("click", startGame);
+document.querySelector("#start-experimental-button").addEventListener("click", startExperimentalGame);
 document.querySelector("#start-leaderboard-button").addEventListener("click", () => openLeaderboard());
 elements.leaderboardRetry.addEventListener("click", loadLeaderboard);
 elements.leaderboardClose.addEventListener("click", closeLeaderboard);
+elements.leaderboardHighest.addEventListener("click", () => setLeaderboardMode("highest"));
+elements.leaderboardLowest.addEventListener("click", () => setLeaderboardMode("lowest"));
 elements.playerNameInput.addEventListener("input", () => {
   elements.playerNameError.textContent = "";
   const playerName = elements.playerNameInput.value.trim().slice(0, 12);

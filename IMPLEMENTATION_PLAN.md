@@ -99,6 +99,14 @@
 - 主操作、Modal、姓名輸入與手機資訊密度完成實機調整。
 - PaJuR 與 Baseball9 以 375×667 為主要手機驗收尺寸。
 
+### Phase 6C — Advanced PRE_ROUND Category Draw
+
+- 經典模式保留具體事件三選一與略過流程。
+- 進階模式固定顯示「獲得道具／機會／命運」；PRE_ROUND 僅記錄可自由切換的選擇，Round Commit 後才抽出並鎖定 canonical event。
+- 類別揭曉只負責呈現；Commit 後的結果不得重抽或拒絕。
+- 一般道具抽取排除 reward-only tickets，滿格時沿用既有替換流程。
+- 以 mode-specific config 管理 pool 與規則覆寫，所有實際效果仍共用既有 handlers。
+
 ### Finalization — Documentation / Archive
 
 - 狀態：COMPLETED。

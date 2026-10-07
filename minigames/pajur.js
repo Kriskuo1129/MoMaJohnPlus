@@ -2,7 +2,7 @@
   "use strict";
 
   const SLOT_COUNT = 12;
-  const GREEN_COUNT = 5;
+  const GREEN_COUNT = 7;
   const BOARD_WIDTH = 720;
   const BOARD_HEIGHT = 1000;
   const MAX_PULL = 110;
@@ -100,8 +100,10 @@
   }
 
   function createGeometry() {
-    const playLeft = 34;
-    const playRight = 606;
+    const playLeft = 26;
+    const playRight = 614;
+    const pegLeft = 34;
+    const pegRight = 606;
     const slotTop = 842;
     const slotBottom = 966;
     const slotWidth = (playRight - playLeft) / SLOT_COUNT;
@@ -109,10 +111,10 @@
     for (let row = 0; row < 8; row += 1) {
       const count = row % 2 === 0 ? 7 : 8;
       const inset = row % 2 === 0 ? 56 : 30;
-      const usable = playRight - playLeft - inset * 2;
+      const usable = pegRight - pegLeft - inset * 2;
       for (let column = 0; column < count; column += 1) {
         pegs.push(Object.freeze({
-          x: playLeft + inset + (count === 1 ? 0 : usable * column / (count - 1)),
+          x: pegLeft + inset + (count === 1 ? 0 : usable * column / (count - 1)),
           y: 225 + row * 78
         }));
       }
@@ -131,6 +133,20 @@
 
   function resultForSlot(layout, slotIndex) {
     return { success: Boolean(layout[slotIndex]?.isGreen) };
+  }
+
+  function resolveSideWallCollision(ball, geometry = createGeometry()) {
+    if (ball.x - PHYSICS.ballRadius < geometry.playLeft) {
+      ball.x = geometry.playLeft + PHYSICS.ballRadius;
+      ball.vx = Math.abs(ball.vx) * PHYSICS.wallBounce;
+      return "left";
+    }
+    if (ball.x + PHYSICS.ballRadius > geometry.playRight) {
+      ball.x = geometry.playRight - PHYSICS.ballRadius;
+      ball.vx = -Math.abs(ball.vx) * PHYSICS.wallBounce;
+      return "right";
+    }
+    return null;
   }
 
   function createStuckTracker(ball = { x: 0, y: 0 }) {
@@ -427,14 +443,7 @@
       ball.vy += PHYSICS.gravity * dt;
       ball.x += ball.vx * dt;
       ball.y += ball.vy * dt;
-      if (ball.x - PHYSICS.ballRadius < geometry.playLeft) {
-        ball.x = geometry.playLeft + PHYSICS.ballRadius;
-        ball.vx = Math.abs(ball.vx) * PHYSICS.wallBounce;
-      }
-      if (ball.x + PHYSICS.ballRadius > geometry.playRight) {
-        ball.x = geometry.playRight - PHYSICS.ballRadius;
-        ball.vx = -Math.abs(ball.vx) * PHYSICS.wallBounce;
-      }
+      resolveSideWallCollision(ball, geometry);
       if (ball.y - PHYSICS.ballRadius < 68) {
         ball.y = 68 + PHYSICS.ballRadius;
         ball.vy = Math.abs(ball.vy) * PHYSICS.wallBounce;
@@ -559,7 +568,7 @@
   }
 
   global.PaJuR = Object.freeze({
-    start, createSlotLayout, createGeometry, clampPullDistance, pullToPower, launchVelocity, slotIndexForX, resultForSlot,
+    start, createSlotLayout, createGeometry, clampPullDistance, pullToPower, launchVelocity, slotIndexForX, resultForSlot, resolveSideWallCollision,
     launchPathSample, launchRailSample,
     createStuckTracker, updateStuckTracker, recoverStuckBall,
     SLOT_COUNT, GREEN_COUNT, MAX_PULL, RESULT_DELAY_MS, PHYSICS, LAUNCH_PATH, EXIT_SPEED_RETENTION, RAIL_EXIT_GAP

@@ -50,11 +50,23 @@ function fakeScheduler() {
 
 const firstLayout = api.createSlotLayout(sequence([0, 0, 0]));
 assert.equal(firstLayout.length, 12);
-assert.equal(firstLayout.filter(slot => slot.isGreen).length, 5);
-assert.equal(firstLayout.filter(slot => !slot.isGreen).length, 7);
-assert.equal(new Set(firstLayout.filter(slot => slot.isGreen).map(slot => slot.id)).size, 5);
+assert.equal(firstLayout.filter(slot => slot.isGreen).length, 7);
+assert.equal(firstLayout.filter(slot => !slot.isGreen).length, 5);
+assert.equal(new Set(firstLayout.filter(slot => slot.isGreen).map(slot => slot.id)).size, 7);
 const secondLayout = api.createSlotLayout(sequence([0.99, 0.8, 0.6]));
 assert.notDeepEqual(firstLayout.map(slot => slot.isGreen), secondLayout.map(slot => slot.isGreen));
+
+const edgeGeometry = api.createGeometry();
+const leftEdgePeg = Math.min(...edgeGeometry.pegs.map(peg => peg.x));
+const rightEdgePeg = Math.max(...edgeGeometry.pegs.map(peg => peg.x));
+assert.ok(leftEdgePeg - (edgeGeometry.playLeft + api.PHYSICS.ballRadius) > api.PHYSICS.ballRadius + api.PHYSICS.pegRadius);
+assert.ok((edgeGeometry.playRight - api.PHYSICS.ballRadius) - rightEdgePeg > api.PHYSICS.ballRadius + api.PHYSICS.pegRadius);
+const leftExtreme = { x: edgeGeometry.playLeft - 5, y: 500, vx: -100, vy: 100 };
+assert.equal(api.resolveSideWallCollision(leftExtreme, edgeGeometry), "left");
+assert.equal(api.resolveSideWallCollision(leftExtreme, edgeGeometry), null, "left boundary correction settles in one pass");
+const rightExtreme = { x: edgeGeometry.playRight + 5, y: 500, vx: 100, vy: 100 };
+assert.equal(api.resolveSideWallCollision(rightExtreme, edgeGeometry), "right");
+assert.equal(api.resolveSideWallCollision(rightExtreme, edgeGeometry), null, "right boundary correction settles in one pass");
 
 const green = firstLayout.find(slot => slot.isGreen);
 const red = firstLayout.find(slot => !slot.isGreen);
@@ -179,6 +191,11 @@ assert.equal(cancelled.round.pullDistance, 0);
 assert.equal(cancelSurface.captured.has(7), false);
 assert.equal(cancelScheduler.frames.size, 0);
 cancelled.destroy();
+
+const integrationCss = fs.readFileSync(path.resolve(__dirname, "..", "style.css"), "utf8");
+assert.match(integrationCss, /\.pajur-host\{height:min\(68dvh,650px\)/);
+const moduleCss = fs.readFileSync(path.resolve(__dirname, "..", "minigames", "pajur.css"), "utf8");
+assert.match(moduleCss, /\.pajur-board-wrap\{[^}]*width:min\(100%,400px\)[^}]*aspect-ratio:720\/1000/);
 
 const movingBall = { x: 100, y: 100, vx: 80, vy: 40 };
 const movingTracker = api.createStuckTracker(movingBall);

@@ -1,23 +1,45 @@
-# Leaderboard Phase 2 Integration
+# Dual Leaderboard Integration
+
+## Storage architecture
+
+Google Spreadsheet 使用三張相同 header（`timestamp | name | score`）的工作表：
+
+- `Ranking`：既有歷史紀錄，只作 Legacy／Seed Data。初始化後正式 GET／POST 均不再讀寫。
+- `HighestRanking`：正式最高 TOP 20，最多 20 筆，score 降冪、同分 timestamp 新到舊。
+- `LowestRanking`：正式最低 TOP 20，最多 20 筆，score 升冪、同分 timestamp 新到舊。
+
+兩張正式榜完全獨立，同一筆 Seed Record 可以同時存在兩榜，不跨榜去重。
 
 ## API
 
-正式 Web App URL 集中設定於 `game-config.js` 的 `LEADERBOARD_API_URL`。GET 與 POST 共用 `leaderboardRequest()`，逾時時間由 `LEADERBOARD_REQUEST_TIMEOUT_MS` 控制。
+正式 Web App URL 集中於 `game-config.js` 的 `LEADERBOARD_API_URL`。所有 GET／POST 皆經 `leaderboardRequest()`，並受 timeout 限制。
 
-## GAME OVER 提交生命週期
+- `GET ?mode=highest`：直接讀 `HighestRanking`。
+- `GET ?mode=lowest`：直接讀 `LowestRanking`。
+- GET 未提供 mode 時預設 highest。
+- POST highest：`{ mode: "highest", name, score }`。
+- POST lowest：`{ mode: "lowest", name, score }`。
 
-`showGameOver()` 先照常顯示最終成績 Modal，再以背景 Promise 呼叫 `submitGameOverScore()`。玩家名稱直接使用 `game.playerName`，最終分數直接使用 `game.score`。現有 `startGame()` 已將空白名稱正規化為 `-沒輸入名稱-`。
+POST 依 mode 只寫指定工作表，在同一個 Script Lock transaction 內 append、排序並裁切至 20 筆。Invalid mode 不寫入任何工作表。
 
-每個 `freshGameState()` 都包含 `leaderboardSubmitted: false`。第一次進入 GAME OVER 時，提交函式會先把它設為 `true` 再開始 POST，所以 render、重新開啟 GAME OVER 或網路失敗都不會讓同一場重複提交。`startGame()`、`resetGame()` 與 `returnToMainMenu()` 建立新 game state 時會自然重置旗標。
+## 開局 Snapshot 與 Qualification
 
-POST 狀態顯示在最終分數下方：`成績登錄中…`、`成績已登錄排行榜！` 或 `排行榜上傳失敗`。失敗只更新狀態並寫入簡短 console warning，不阻塞 GAME OVER 操作。
+玩家開始或「再玩一場」時先顯示「遊戲讀取中…」，平行取得兩張正式榜 Snapshot，完成後才進入 `PRE_ROUND`。任一 GET offline、timeout、API failure 或 malformed response 時，遊戲仍開始，但本局 Snapshot invalid、不 qualification、不 POST、不宣稱進榜。Gameplay 與 GAME OVER 不重新 GET 門檻。
 
-## Top 20 UI
+GAME OVER 採 Highest 優先且互斥：
 
-READY 主選單與 GAME OVER 共用同一個 `leaderboard-overlay`。Overlay 開啟後立即顯示載入狀態，再以 GET 取得後端已排序的 Top 20；前端只限制最多顯示 20 筆，不重新排序。同名紀錄逐筆顯示，前三名分別使用金、銀、銅牌符號。
+1. Highest 少於 20 筆，或 `finalScore >= highest rank 20 score`：mode 為 highest。
+2. 只有不符合 Highest 時才判斷 Lowest；Lowest 少於 20 筆，或 `finalScore <= lowest rank 20 score`：mode 為 lowest。
+3. 否則 mode 為 null，不 POST。
 
-外部名稱使用 `textContent` 寫入 DOM，不使用未 escape 的 HTML。空資料顯示 `目前還沒有排行榜紀錄`；讀取失敗顯示 `排行榜讀取失敗` 並提供 `重新整理`。
+一局最多只有一個 mode、最多 POST 一次。Highest waiting 為「有不得了的事正在發生...」，成功顯示 `🏆 本次成績進入最高 TOP 20！`；Lowest waiting 為「欸你好像....」，成功顯示 `💀 本次成績進入最低 TOP 20！`。POST failure／timeout 仍進 GAME OVER，且不顯示成功 badge。
 
-## Mobile behavior
+## Ranking Overlay
 
-排行榜 Overlay 固定為 viewport 高度且本身 `overflow: hidden`。Header 與 Footer 固定在卡片內，只有 `.leaderboard-content` 使用 `overflow-y: auto` 與 `overscroll-behavior: contain`。在 375×667 viewport 下，排行榜不增加 Browser Page 高度，Top 20 由內容區內部捲動。
+READY 與 GAME OVER 共用單一 Overlay，固定顯示「最高 TOP 20／最低 TOP 20」切換。切換只更新同一個 internal scroll list，Retry 使用當前 mode。Highest 前三名使用獎牌；Lowest 使用數字排名。Overlay 為 `100dvh`、Browser Page 不垂直捲動，僅 list 內部捲動。
+
+## Migration 與 Deployment
+
+`initializeDualLeaderboards()` 只能由管理者在 Apps Script Editor 手動執行，GET／POST 不會觸發。它在 Script Lock 內讀取 `Ranking` 全部有效紀錄，保留原 timestamp，分別重建最高與最低 TOP 20；不修改 `Ranking`，且可安全重跑。
+
+Repository 中修改腳本不等於線上 Web App 已更新。先更新 Code.gs、手動執行 migration 並檢查兩張正式榜，再於「管理部署作業」建立新版本。正式 `/exec` URL 維持不變。

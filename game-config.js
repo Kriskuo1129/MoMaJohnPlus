@@ -24,8 +24,21 @@ const MINIGAME_DEFINITIONS = Object.freeze({
   memoryMaster: Object.freeze({ id: "memoryMaster", name: "記憶大師", enabled: true, implementation: "MEMORY_MASTER" })
 });
 
+const SIDE_CHALLENGE_DEFINITIONS = Object.freeze([
+  Object.freeze({ id: "chiikawa", title: "吉一卡哇", description: "取得一萬、一筒、一條。", type: "COLLECT", tileIds: ["wan-1", "tong-1", "suo-1"] }),
+  Object.freeze({ id: "three-set", title: "無三不成禮", description: "取得三萬、三筒、三條。", type: "COLLECT", tileIds: ["wan-3", "tong-3", "suo-3"] }),
+  Object.freeze({ id: "four-set", title: "出四啦", description: "取得四萬、四筒、四條。", type: "COLLECT", tileIds: ["wan-4", "tong-4", "suo-4"] }),
+  Object.freeze({ id: "five-set", title: "五告讚", description: "取得五萬、五筒、五條。", type: "COLLECT", tileIds: ["wan-5", "tong-5", "suo-5"] }),
+  Object.freeze({ id: "six-set", title: "六六六", description: "取得六萬、六筒、六條。", type: "COLLECT", tileIds: ["wan-6", "tong-6", "suo-6"] }),
+  Object.freeze({ id: "seven-set", title: "字齊七七", description: "取得七萬、七筒、七條。", type: "COLLECT", tileIds: ["wan-7", "tong-7", "suo-7"] }),
+  Object.freeze({ id: "eight-set", title: "八方雲集", description: "取得八萬、八筒、八條。", type: "COLLECT", tileIds: ["wan-8", "tong-8", "suo-8"] }),
+  Object.freeze({ id: "compass", title: "指南針是你？", description: "取得東、南、西、北。", type: "COLLECT", tileIds: ["east", "south", "west", "north"] }),
+  Object.freeze({ id: "avoid-nine", title: "九0", description: "本局不要取得九萬、九筒、九條。", type: "AVOID", tileIds: ["wan-9", "tong-9", "suo-9"] }),
+  Object.freeze({ id: "avoid-eight", title: "八0是不對的", description: "本局不要取得八萬、八筒、八條。", type: "AVOID", tileIds: ["wan-8", "tong-8", "suo-8"] })
+]);
+
 const PRE_ROUND_EVENT_DEFINITIONS = Object.freeze([
-  Object.freeze({ id: "mystery-gift", title: "神秘禮物到來", description: "開牌局後隨機獲得一個道具。", type: "ITEM", effectKey: "DRAW_ITEM" }),
+  Object.freeze({ id: "mystery-gift", title: "神秘禮物到來", description: "開始摸牌後隨機獲得一個道具。", type: "ITEM", effectKey: "DRAW_ITEM" }),
   Object.freeze({ id: "believe-guoju", title: "相信國聚", description: "東南西北中發白取得其中 6 張。", type: "BET", effectKey: "REQUIRE_TILES", tileIds: ["east", "south", "west", "north", "red", "green", "white"], requiredCount: 6, reward: 30, penalty: 30 }),
   Object.freeze({ id: "chiikawa", title: "吉一卡哇", description: "正式取得一萬、一筒、一條。", type: "BET", effectKey: "REQUIRE_TILES", tileIds: ["wan-1", "tong-1", "suo-1"], reward: 15, penalty: 10 }),
   Object.freeze({ id: "three-set", title: "無三不成禮", description: "正式取得三萬、三筒、三條。", type: "BET", effectKey: "REQUIRE_TILES", tileIds: ["wan-3", "tong-3", "suo-3"], reward: 15, penalty: 10 }),
@@ -53,8 +66,24 @@ const ITEM_DEFINITIONS = Object.freeze([
   Object.freeze({ id: "disposable-charm", title: "免洗護身符", type: "AUTO", description: "自動擋下第一個負面局中事件，發動後消失。" }),
   Object.freeze({ id: "pocket-green", title: "口袋中的發", type: "ACTIVE", description: "直接取得「發」。", targetTileId: "green" }),
   Object.freeze({ id: "pocket-red", title: "口袋中的中", type: "ACTIVE", description: "直接取得「中」。", targetTileId: "red" }),
-  Object.freeze({ id: "pocket-white", title: "口袋中的白板", type: "ACTIVE", description: "直接取得「白板」。", targetTileId: "white" })
+  Object.freeze({ id: "pocket-white", title: "口袋中的白板", type: "ACTIVE", description: "直接取得「白板」。", targetTileId: "white" }),
+  Object.freeze({ id: "multiplier-ticket", title: "倍率券", icon: "倍", type: "RESOURCE", rewardOnly: true, description: "可在開局準備提高本局倍率。" }),
+  Object.freeze({ id: "self-select-ticket", title: "自選券", icon: "選", type: "RESOURCE", rewardOnly: true, description: "可將一次普通正式摸牌改為自選牌。" }),
+  Object.freeze({ id: "free-ticket", title: "免費券", icon: "免", type: "RESOURCE", rewardOnly: true, description: "可讓一局不消耗局數。" })
 ]);
+
+const PRE_ROUND_MODE_CONFIG = Object.freeze({
+  production: Object.freeze({ selection: "CONCRETE_OPTIONS", overrides: Object.freeze({}) }),
+  experimental: Object.freeze({
+    selection: "FIXED_CATEGORIES",
+    overrides: Object.freeze({}),
+    categories: Object.freeze([
+      Object.freeze({ id: "item", title: "獲得道具", description: "隨機獲得一個道具", type: "ITEM", eventIds: Object.freeze(["mystery-gift"]) }),
+      Object.freeze({ id: "chance", title: "機會", description: "隨機抽取一個機會事件", type: "BET", eventIds: Object.freeze(["believe-guoju", "ever-waiting", "complete-line", "stop-at-waiting"]) }),
+      Object.freeze({ id: "destiny", title: "命運", description: "隨機抽取一個命運事件", type: "SPECIAL", eventIds: Object.freeze(["rock-paper-scissors", "more-tiles", "boss-leverage"]) })
+    ])
+  })
+});
 
 const FORTUNE_MODIFIERS = Object.freeze({
   "-3": Object.freeze({ POSITIVE: 0.25, NEGATIVE: 4 }),

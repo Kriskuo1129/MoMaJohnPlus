@@ -235,7 +235,7 @@ const api = context.phase2Test;
   const line = await api.formalEffects(); assert.equal(line.drawIndex, 13); assert.equal(line.drawn, true); assert.equal(line.line, true);
   const waiting = await api.waitingEffect(); assert.equal(waiting.everWaited, true); assert.ok(waiting.waiting > 0); assert.equal(await api.betEffect(), true);
   const restarted = api.restart("pachinko");
-  assert.deepEqual(JSON.parse(JSON.stringify(restarted.miniGame)), { offered: false, completed: false, selectedId: null, challengeResult: null, challengeResolved: false, failureDrawStarted: false, memory: null, pajur: null, baseball9: null });
+  assert.deepEqual(JSON.parse(JSON.stringify(restarted.miniGame)), { offered: false, completed: false, selectedId: null, challengeResult: null, challengeResolved: false, failureDrawStarted: false, interRound: false, memory: null, pajur: null, baseball9: null });
   assert.equal(restarted.tilePicker, null); assert.equal(restarted.forced, "pachinko"); assert.equal(restarted.attemptsSame, true); assert.equal(api.bonusDoesNotOffer(), false);
   const baseballRestarted = api.restart("baseball9");
   assert.equal(baseballRestarted.baseballDestroys, 1); assert.equal(baseballRestarted.miniGame.baseball9, null); assert.equal(baseballRestarted.forced, "baseball9"); assert.equal(baseballRestarted.attemptsSame, true);

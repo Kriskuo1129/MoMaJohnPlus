@@ -113,7 +113,7 @@ setup();
 assert.equal(PRE_ROUND_EVENT_DEFINITIONS.filter(e => e.type === "BET").length, 9);
 assert.equal(PRE_ROUND_EVENT_DEFINITIONS.filter(e => e.type === "SPECIAL").length, 6);
 const gift = PRE_ROUND_EVENT_DEFINITIONS.find(e => e.type === "ITEM");
-assert.equal(getPreRoundEventWeight(gift), ITEM_DEFINITIONS.length);
+assert.equal(getPreRoundEventWeight(gift), ITEM_DEFINITIONS.filter(item => !item.rewardOnly).length);
 assert.equal(getPreRoundEventWeight(gift), 10);
 assert.equal(PRE_ROUND_EVENT_DEFINITIONS.reduce((sum, e) => sum + getPreRoundEventWeight(e), 0), 25);
 assert.equal(PRE_ROUND_EVENT_DEFINITIONS.some(e => e.type === "SKIP" || /skip/i.test(e.id)), false);

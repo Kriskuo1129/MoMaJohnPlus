@@ -304,9 +304,9 @@ globalThis.phase1DTest = {
 vm.runInContext(source, context, { filename: "phase1d-bundle.js" });
 const api = context.phase1DTest;
 
-assert.equal(api.definitions.length, 10);
-assert.equal(new Set(api.definitions.map(item => item.id)).size, 10);
-assert.equal(JSON.stringify(api.definitions.map(item => item.title)), JSON.stringify(["大吉的籤", "小吉的籤", "小凶的籤", "大凶的籤", "嗆司Maker", "喝完的飲料杯", "免洗護身符", "口袋中的發", "口袋中的中", "口袋中的白板"]));
+assert.equal(api.definitions.length, 13);
+assert.equal(new Set(api.definitions.map(item => item.id)).size, 13);
+assert.equal(JSON.stringify(api.definitions.map(item => item.title)), JSON.stringify(["大吉的籤", "小吉的籤", "小凶的籤", "大凶的籤", "嗆司Maker", "喝完的飲料杯", "免洗護身符", "口袋中的發", "口袋中的中", "口袋中的白板", "倍率券", "自選券", "免費券"]));
 assert.equal(api.preRoundDefinitions.filter(event => event.type === "ITEM").length, 1);
 assert.match(pageHtml, /id="pre-round-skip-button"[^>]*>這局不選事件<\/button>/);
 assert.match(pageHtml, /id="options-button"[^>]*class="guide-button"[^>]*>選項<\/button>/);

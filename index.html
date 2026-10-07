@@ -17,7 +17,8 @@
       <p id="player-name-error" class="player-name-error" role="alert" aria-live="polite"></p>
       <h2>台灣夜市摸麻將</h2>
       <div class="mode-options">
-        <button id="start-game-button" type="button"><b>開始遊戲</b><span>每局 15 張・事件牌・連線與牌型</span><small>輸入名稱後直接開始摸麻將Plus</small></button>
+        <button id="start-game-button" type="button"><b>經典模式</b><span>比較純粹的摸麻將體驗</span></button>
+        <button id="start-experimental-button" class="advanced-mode-button" type="button"><b>進階模式</b><span>更多策略的摸麻將體驗</span></button>
       </div>
       <button id="start-leaderboard-button" class="leaderboard-entry-button" type="button">🏆 排行榜</button>
     </div>
@@ -26,7 +27,7 @@
     <header class="game-hud" aria-label="遊戲資訊">
       <section class="hud-score-panel">
         <div class="hud-left">
-          <div class="hud-player"><strong id="player-display">玩家</strong></div>
+          <div class="hud-player"><strong id="player-display">玩家</strong><span id="game-mode-indicator" class="game-mode-indicator">經典模式</span></div>
           <div class="hud-points">
             <div class="hud-total" aria-label="總分數"><strong id="total-score">0</strong></div>
             <div class="hud-round-points" aria-label="本局分數"><strong id="round-score" class="hud-score-gold">0</strong></div>
@@ -47,14 +48,18 @@
         <div id="pre-round-leverage-options" class="pre-round-leverage-options"></div>
       </section>
       <p id="pre-round-error" class="pre-round-error" role="alert" aria-live="polite"></p>
-      <button id="start-round-button" class="start-round-button" type="button" disabled>開牌局</button>
+      <div class="pre-round-actions">
+        <button id="pre-round-item-button" class="pre-round-item-button" type="button">道具 <span id="pre-round-inventory-count">0/3</span></button>
+        <button id="start-round-button" class="start-round-button" type="button" disabled>開始摸牌</button>
+      </div>
     </section>
 
     <section id="play-area" class="play-area hidden">
+      <section id="side-challenge-status" class="side-challenge-status hidden" aria-live="polite"></section>
       <div id="board" class="board" role="grid" aria-label="六乘六麻將對獎盤"></div>
       <p id="message" class="message" aria-live="polite"></p>
       <section class="draw-zone" aria-label="摸牌操作">
-        <button id="item-status-button" class="side-action-button" type="button">道具 / 狀態</button>
+        <button id="item-status-button" class="side-action-button" type="button">道具 / 狀態<span id="inventory-full-badge" class="inventory-full-badge hidden">滿</span></button>
         <button id="draw-stack" class="draw-button" type="button">摸牌 (15)</button>
         <button id="tile-peek-button" class="side-action-button" type="button">已抽牌型</button>
       </section>
@@ -89,7 +94,12 @@
   <div id="toast-stack" class="toast-stack" aria-live="polite"></div>
   <div id="leaderboard-overlay" class="leaderboard-overlay" aria-hidden="true">
     <section class="leaderboard-card" role="dialog" aria-modal="true" aria-labelledby="leaderboard-title">
-      <header class="leaderboard-header"><p>NIGHT MARKET TOP 20</p><h2 id="leaderboard-title">🏆 排行榜</h2></header>
+      <header class="leaderboard-header"><p>NIGHT MARKET TOP 20</p><h2 id="leaderboard-title">🏆 排行榜</h2>
+        <div class="leaderboard-mode-switch" role="group" aria-label="排行榜模式">
+          <button id="leaderboard-highest" class="active" type="button" aria-pressed="true">最高 TOP 20</button>
+          <button id="leaderboard-lowest" type="button" aria-pressed="false">最低 TOP 20</button>
+        </div>
+      </header>
       <div id="leaderboard-content" class="leaderboard-content" aria-live="polite"></div>
       <footer class="leaderboard-footer">
         <button id="leaderboard-retry" class="secondary hidden" type="button">重新整理</button>
