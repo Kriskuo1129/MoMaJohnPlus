@@ -31,7 +31,9 @@ globalThis.sideChallengeTest = {
   end() { resolveSideChallengeAtRoundEnd(); settleRoundPoints(); return { status: game.round.sideChallenge.status, raw: game.round.rawPoints, multiplierPoints: game.round.multiplierPoints, score: game.score, prompts: sidePrompts.slice(), settlement: renderSideChallengeSettlement() }; },
   pool(mode) { return getEligiblePreRoundEvents(mode).map(event => event.id); },
   production() { game = freshGameState("TEST", GAME_MODES.PRODUCTION); game.round = createRound(15, []); game.round.started = true; game.state = GAME_STATES.DRAWING; return { initialized: initializeSideChallenge(() => 0), sideChallenge: game.round.sideChallenge }; },
+  initializeAgain() { return initializeSideChallenge(() => 0.99); },
   freeTicketConfirmation() { game = freshGameState("TEST", GAME_MODES.EXPERIMENTAL); game.items = ["free-ticket"]; game.round = createRound(15, []); game.state = GAME_STATES.PRE_ROUND; game.round.preRound.eventSelectionType = "SKIP"; commitRoundConfiguration(); return { state: game.state, sideChallenge: game.round.sideChallenge }; },
+  classicPreRound() { game = freshGameState("TEST", GAME_MODES.PRODUCTION); game.round = createRound(15, []); game.state = GAME_STATES.PRE_ROUND; return { state: game.state, sideChallenge: game.round.sideChallenge }; },
   statusHtml() { renderSideChallengeStatus(); return elements.sideChallengeStatus.innerHTML; },
   reveal(index, mode = GAME_MODES.EXPERIMENTAL) {
     this.setup(index, 1, mode);
@@ -94,6 +96,15 @@ globalThis.sideChallengeTest = {
     if (won && event.effectKey === "UNFINISHED_WAITING_LINE") game.round.everWaitingLines.add("row-0");
     const result = settleBets()[0];
     return { points: result.points, score: game.score, breakdown: game.round.scoreBreakdown[0] };
+  },
+  async miniGameFormalDraw(index, tileId, previousIds = []) {
+    this.setup(index, 1, GAME_MODES.PRODUCTION);
+    previousIds.forEach(id => game.round.drawn.add(id));
+    game.round.miniGame = { completed: false, challengeResult: "SUCCESS" };
+    animateStackTile = async () => {};
+    const tile = GAME_TILES.find(candidate => candidate.id === tileId);
+    const completedId = await completeMiniGameFormalDraw(tile, { suppressEvent: true });
+    return { completedId, status: game.round.sideChallenge.status, drawIndex: game.round.drawIndex, drawn: Array.from(game.round.drawn) };
   }
 };`;
 vm.runInContext(source, context, { filename: "experimental-side-challenges-bundle.js" });
@@ -102,11 +113,14 @@ const plain = value => JSON.parse(JSON.stringify(value));
 
 assert.equal(api.definitions.length, 10);
 assert.equal(new Set(api.definitions.map(definition => definition.id)).size, 10);
+assert.equal(api.definitions.find(definition => definition.id === "avoid-nine").title, "酒駕是不好的");
 let setup = api.setup(0);
 assert.equal(setup.before, null, "PRE_ROUND has no announced challenge");
 assert.deepEqual(plain(api.freeTicketConfirmation()), { state: "PRE_ROUND", sideChallenge: null }, "free-ticket confirmation does not reveal a challenge");
+assert.deepEqual(plain(api.classicPreRound()), { state: "PRE_ROUND", sideChallenge: null }, "Classic PRE_ROUND does not reveal a challenge before commit");
 setup = api.setup(0);
 assert.equal(setup.selected, "chiikawa"); assert.equal(setup.runtime.status, "ACTIVE");
+assert.equal(api.initializeAgain(), false, "the same committed round cannot create or reroll a second challenge");
 assert.match(api.statusHtml(), /吉一卡哇|進行中/);
 assert.match(api.statusHtml(), /一萬 <b>×<\/b>/);
 assert.doesNotMatch(api.statusHtml(), /🀇|已取得|未取得/);
@@ -125,19 +139,29 @@ api.setup(9); result = plain(api.acquire("wan-8")); assert.equal(result.status, 
 api.setup(9); result = plain(api.end()); assert.equal(result.status, "SUCCESS");
 
 for (const multiplier of [1, 2, 3, 4, 6]) { api.setup(8, multiplier); result = plain(api.end()); assert.equal(result.multiplierPoints, 10 * multiplier); }
+for (const multiplier of [1, 2, 3, 6]) { api.setup(8, multiplier, "production"); result = plain(api.end()); assert.equal(result.multiplierPoints, 10 * multiplier, `Classic task reward applies x${multiplier} exactly once`); }
 api.setup(8, 6); api.acquire("wan-9"); result = plain(api.end()); assert.equal(result.multiplierPoints, 0);
+
+for (let index = 0; index < api.definitions.length; index += 1) {
+  assert.equal(api.setup(index, 1, "production").selected, api.definitions[index].id, `Classic can select task ${api.definitions[index].id}`);
+}
 
 api.setup(0); api.acquire("wan-1"); api.acquire("tong-1"); result = plain(api.acquire("suo-1")); assert.equal(result.status, "SUCCESS", "self-selected formal acquisition shares the same evaluator");
 api.setup(8); result = plain(api.acquire("wan-9")); assert.equal(result.status, "FAILURE", "self-selected forbidden tile fails immediately");
 api.setup(0); result = plain(api.acquire("event-1")); assert.equal(result.status, "ACTIVE", "event tile is irrelevant to current challenges");
 
 const moved = ["chiikawa", "three-set", "five-set", "seven-set", "compass", "pearl-baby", "home-team-wins"];
+const classicDuplicates = ["chiikawa", "three-set", "five-set", "seven-set", "compass"];
 const retained = ["mystery-gift", "believe-guoju", "ever-waiting", "complete-line", "stop-at-waiting", "rock-paper-scissors", "more-tiles", "boss-leverage"];
 const experimentalPool = plain(api.pool("experimental")); const productionPool = plain(api.pool("production"));
 moved.forEach(id => assert.equal(experimentalPool.includes(id), false, `${id} is excluded only from Experimental`));
 retained.forEach(id => assert.equal(experimentalPool.includes(id), true, `${id} remains in Experimental`));
-moved.forEach(id => assert.equal(productionPool.includes(id), true, `${id} remains in Production`));
-assert.deepEqual(plain(api.production()), { initialized: false, sideChallenge: null });
+classicDuplicates.forEach(id => assert.equal(productionPool.includes(id), false, `${id} is excluded from Classic because the small-task system now covers it`));
+["pearl-baby", "home-team-wins"].forEach(id => assert.equal(productionPool.includes(id), true, `${id} remains in Classic`));
+const productionChallenge = plain(api.production());
+assert.equal(productionChallenge.initialized.id, "chiikawa");
+assert.equal(productionChallenge.sideChallenge.id, "chiikawa");
+assert.equal(productionChallenge.sideChallenge.status, "ACTIVE");
 
 const reveal = plain(api.reveal(3));
 assert.deepEqual(reveal.before, { opened: true, locked: true, ready: false, confirmed: false, scheduled: 7 });
@@ -146,7 +170,10 @@ assert.equal(reveal.committedId, "five-set");
 assert.equal(reveal.confirmed, true);
 assert.equal(reveal.lockedAfter, false);
 assert.equal(reveal.revealConfirmed, true);
-assert.equal(api.reveal(0, "production").before.opened, false, "Classic mode never opens a challenge reveal");
+const classicReveal = plain(api.reveal(0, "production"));
+assert.equal(classicReveal.before.opened, true, "Classic opens the shared challenge reveal after round commit");
+assert.equal(classicReveal.earlyConfirm, false);
+assert.equal(classicReveal.confirmed, true);
 
 for (const mode of ["production", "experimental"]) {
   const inventory = plain(api.preRoundInventory(mode));
@@ -218,4 +245,13 @@ for (const [id, [reward, penalty]] of Object.entries(x6Expected)) {
   assert.equal(api.settleOpportunity("experimental", id, false, 6).points, penalty);
 }
 
-console.log("Experimental side challenge tests: PASS");
+(async () => {
+  const miniGameSuccess = plain(await api.miniGameFormalDraw(0, "suo-1", ["wan-1", "tong-1"]));
+  assert.equal(miniGameSuccess.completedId, "suo-1");
+  assert.equal(miniGameSuccess.status, "SUCCESS", "13th-tile mini-game selected formal tile updates Classic task progress");
+  assert.equal(miniGameSuccess.drawIndex, 1);
+  assert.equal(miniGameSuccess.drawn.filter(id => id === "suo-1").length, 1, "mini-game formal acquisition is not duplicated");
+  const miniGameFailureDraw = plain(await api.miniGameFormalDraw(8, "wan-9"));
+  assert.equal(miniGameFailureDraw.status, "FAILURE", "13th-tile mini-game fallback formal draw updates avoid-task failure");
+  console.log("Experimental and Classic side challenge tests: PASS");
+})().catch(error => { console.error(error); process.exitCode = 1; });

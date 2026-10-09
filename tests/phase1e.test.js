@@ -127,9 +127,12 @@ assert.equal(drawPreRoundEvents(() => 0)[0], gift);
 assert.equal(drawPreRoundEvents(() => 0)[0], drawPreRoundEvents(() => 0)[0]);
 assert.equal(weightedRandom(PRE_ROUND_EVENT_DEFINITIONS, 0.3999, getPreRoundEventWeight), gift);
 assert.notEqual(weightedRandom(PRE_ROUND_EVENT_DEFINITIONS, 0.4, getPreRoundEventWeight), gift);
-let values = [10.5 / 25, 10.5 / 24, 10.5 / 23];
+let values = [10.5 / 19, 10.5 / 18, 10.5 / 17];
 assert.ok(drawPreRoundEvents(() => values.shift()).every(e => e.type === "BET"));
 assert.ok(drawPreRoundEvents(() => 0.9999).every(e => e.type === "SPECIAL"));
+const classicPool = getEligiblePreRoundEvents("production");
+assert.deepEqual(classicPool.filter(e => e.type === "BET").map(e => e.id), ["believe-guoju", "ever-waiting", "complete-line", "stop-at-waiting"]);
+assert.equal(classicPool.some(e => ["chiikawa", "three-set", "five-set", "seven-set", "compass"].includes(e.id)), false);
 
 for (const [items, score] of [
   [["great-fortune"], 2], [["small-fortune"], 1], [["small-misfortune"], -1], [["great-misfortune"], -2],

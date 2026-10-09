@@ -10,6 +10,10 @@
 const LEADERBOARD_API_URL = "https://script.google.com/macros/s/AKfycbxotHKwUZXvENMdDFwFi4zUjjcHx3g6SV9oI0EfeaNGZLs0A_Ch5n5bGfDBZfTmZUha/exec";
 const LEADERBOARD_REQUEST_TIMEOUT_MS = 10000;
 
+const GAME_MODE_AVAILABILITY = Object.freeze({ production: true, experimental: false });
+const SIDE_CHALLENGE_MODE_CONFIG = Object.freeze({ production: Object.freeze({ enabled: true }), experimental: Object.freeze({ enabled: true }) });
+const CLASSIC_PRE_ROUND_EXCLUDED_EVENT_IDS = Object.freeze(["chiikawa", "three-set", "five-set", "seven-set", "compass"]);
+
 const SCORE_CONFIG = Object.freeze({
   line: Object.freeze({ first: 30, second: 60, thirdPlus: 90 }),
   // 花色數值是「該門目前總獎勵值」，不是每個 milestone 的額外加分。
@@ -33,7 +37,7 @@ const SIDE_CHALLENGE_DEFINITIONS = Object.freeze([
   Object.freeze({ id: "seven-set", title: "字齊七七", description: "取得七萬、七筒、七條。", type: "COLLECT", tileIds: ["wan-7", "tong-7", "suo-7"] }),
   Object.freeze({ id: "eight-set", title: "八方雲集", description: "取得八萬、八筒、八條。", type: "COLLECT", tileIds: ["wan-8", "tong-8", "suo-8"] }),
   Object.freeze({ id: "compass", title: "指南針是你？", description: "取得東、南、西、北。", type: "COLLECT", tileIds: ["east", "south", "west", "north"] }),
-  Object.freeze({ id: "avoid-nine", title: "九0", description: "本局不要取得九萬、九筒、九條。", type: "AVOID", tileIds: ["wan-9", "tong-9", "suo-9"] }),
+  Object.freeze({ id: "avoid-nine", title: "酒駕是不好的", description: "本局不要取得九萬、九筒、九條。", type: "AVOID", tileIds: ["wan-9", "tong-9", "suo-9"] }),
   Object.freeze({ id: "avoid-eight", title: "八0是不對的", description: "本局不要取得八萬、八筒、八條。", type: "AVOID", tileIds: ["wan-8", "tong-8", "suo-8"] })
 ]);
 
@@ -73,7 +77,7 @@ const ITEM_DEFINITIONS = Object.freeze([
 ]);
 
 const PRE_ROUND_MODE_CONFIG = Object.freeze({
-  production: Object.freeze({ selection: "CONCRETE_OPTIONS", overrides: Object.freeze({}) }),
+  production: Object.freeze({ selection: "CONCRETE_OPTIONS", excludedEventIds: CLASSIC_PRE_ROUND_EXCLUDED_EVENT_IDS, overrides: Object.freeze({}) }),
   experimental: Object.freeze({
     selection: "FIXED_CATEGORIES",
     overrides: Object.freeze({

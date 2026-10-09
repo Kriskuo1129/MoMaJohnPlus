@@ -10,6 +10,8 @@ const GAME_STATES = Object.freeze({
 const GAME_MODES = Object.freeze({ PRODUCTION: "production", EXPERIMENTAL: "experimental" });
 function gameModeAllowsLeaderboardPost(mode) { return mode === GAME_MODES.PRODUCTION; }
 function gameModeDisplayName(mode) { return mode === GAME_MODES.EXPERIMENTAL ? "進階模式" : "經典模式"; }
+function gameModeIsPubliclyAvailable(mode) { return GAME_MODE_AVAILABILITY[mode] === true; }
+function gameModeUsesSideChallenges(mode = game?.mode ?? GAME_MODES.PRODUCTION) { return SIDE_CHALLENGE_MODE_CONFIG[mode]?.enabled === true; }
 
 const RULES = Object.freeze({ initialAttempts: 6, maxAttempts: 6, bonusChoices: 3, baseFormalDrawCount: 15 });
 const PLAYER_NAME_STORAGE_KEY = "momajohnPlayerName";
@@ -101,9 +103,10 @@ function resolvePreRoundEventForMode(event, mode = game?.mode ?? GAME_MODES.PROD
 function getEligiblePreRoundEvents(mode = game?.mode ?? GAME_MODES.PRODUCTION, configs = PRE_ROUND_MODE_CONFIG) {
   const modeConfig = getPreRoundModeConfig(mode, configs);
   const categoryIds = modeConfig.selection === "FIXED_CATEGORIES" ? new Set(modeConfig.categories.flatMap(category => category.eventIds)) : null;
+  const excludedIds = new Set(modeConfig.excludedEventIds ?? []);
   return PRE_ROUND_EVENT_DEFINITIONS
     .map(event => resolvePreRoundEventForMode(event, mode, configs))
-    .filter(event => event.enabled !== false && (!categoryIds || categoryIds.has(event.id)));
+    .filter(event => event.enabled !== false && !excludedIds.has(event.id) && (!categoryIds || categoryIds.has(event.id)));
 }
 
 function drawPreRoundEvents(random = Math.random, mode = game?.mode ?? GAME_MODES.PRODUCTION) {
@@ -325,7 +328,7 @@ function selectSideChallenge(random = Math.random) {
 }
 
 function initializeSideChallenge(random = Math.random) {
-  if (game.mode !== GAME_MODES.EXPERIMENTAL || !game.round?.started || game.round.sideChallenge) return false;
+  if (!gameModeUsesSideChallenges() || !game.round?.started || game.round.sideChallenge) return false;
   const definition = selectSideChallenge(random);
   if (!definition) return false;
   game.round.sideChallenge = { id: definition.id, status: "ACTIVE", promptShown: false, baseReward: 10, awarded: false, revealReady: false, revealConfirmed: false };
@@ -354,7 +357,7 @@ function finishSideChallengeReveal(definition) {
 
 function openSideChallengeReveal(definition, scheduler = setTimeout) {
   const runtime = game.round?.sideChallenge;
-  if (game.mode !== GAME_MODES.EXPERIMENTAL || game.state !== GAME_STATES.DRAWING || !runtime || runtime.id !== definition?.id) return false;
+  if (!gameModeUsesSideChallenges() || game.state !== GAME_STATES.DRAWING || !runtime || runtime.id !== definition?.id) return false;
   clearSideChallengeRevealPresentation();
   game.uiOverlayOpen = true;
   runtime.revealReady = false;
@@ -381,7 +384,7 @@ function openSideChallengeReveal(definition, scheduler = setTimeout) {
 
 function confirmSideChallengeReveal() {
   const runtime = game.round?.sideChallenge;
-  if (game.mode !== GAME_MODES.EXPERIMENTAL || game.state !== GAME_STATES.DRAWING || !runtime?.revealReady || runtime.revealConfirmed) return false;
+  if (!gameModeUsesSideChallenges() || game.state !== GAME_STATES.DRAWING || !runtime?.revealReady || runtime.revealConfirmed) return false;
   runtime.revealConfirmed = true;
   clearSideChallengeRevealPresentation();
   game.uiOverlayOpen = false;
@@ -397,7 +400,7 @@ function sideChallengeDefinition() {
 function renderSideChallengeStatus() {
   const runtime = game.round?.sideChallenge;
   const definition = sideChallengeDefinition();
-  const visible = game.mode === GAME_MODES.EXPERIMENTAL && runtime && definition && game.round?.started;
+  const visible = gameModeUsesSideChallenges() && runtime && definition && game.round?.started;
   elements.sideChallengeStatus.classList.toggle("hidden", !visible);
   if (!visible) { elements.sideChallengeStatus.textContent = ""; return; }
   const status = { ACTIVE: "進行中", SUCCESS: "完成", FAILURE: "失敗" }[runtime.status];
@@ -434,7 +437,7 @@ function completeSideChallenge(status) {
 function evaluateSideChallengeAfterAcquisition(tile) {
   const runtime = game.round?.sideChallenge;
   const definition = sideChallengeDefinition();
-  if (game.mode !== GAME_MODES.EXPERIMENTAL || !runtime || runtime.status !== "ACTIVE" || !definition || !tile) return false;
+  if (!gameModeUsesSideChallenges() || !runtime || runtime.status !== "ACTIVE" || !definition || !tile) return false;
   if (definition.type === "AVOID" && definition.tileIds.includes(tile.id)) return completeSideChallenge("FAILURE");
   if (definition.type === "COLLECT" && definition.tileIds.every(isOfficiallyDrawn)) return completeSideChallenge("SUCCESS");
   return false;
@@ -443,14 +446,14 @@ function evaluateSideChallengeAfterAcquisition(tile) {
 function resolveSideChallengeAtRoundEnd() {
   const runtime = game.round?.sideChallenge;
   const definition = sideChallengeDefinition();
-  if (game.mode !== GAME_MODES.EXPERIMENTAL || !runtime || runtime.status !== "ACTIVE" || !definition) return false;
+  if (!gameModeUsesSideChallenges() || !runtime || runtime.status !== "ACTIVE" || !definition) return false;
   return completeSideChallenge(definition.type === "AVOID" ? "SUCCESS" : "FAILURE");
 }
 
 function renderSideChallengeSettlement() {
   const runtime = game.round?.sideChallenge;
   const definition = sideChallengeDefinition();
-  if (game.mode !== GAME_MODES.EXPERIMENTAL || !runtime || !definition) return "";
+  if (!gameModeUsesSideChallenges() || !runtime || !definition) return "";
   const multiplier = game.round.finalMultiplier;
   const result = runtime.status === "SUCCESS"
     ? `<strong>+${runtime.baseReward} ×${multiplier} = +${runtime.baseReward * multiplier}</strong>`
@@ -2465,7 +2468,7 @@ function buildScoringGuideContent() {
 }
 
 function buildModeGuideContent() {
-  return `<section class="help-section"><h3>玩法模式</h3><div class="rules-list scoring-guide"><p><b>經典模式</b><span>專注原本摸麻將玩法，規則直接，挑戰高分。</span></p><p><b>進階模式</b><span>加入小任務挑戰、局間小遊戲與資源策略。</span></p></div></section>`;
+  return `<section class="help-section"><h3>玩法模式</h3><div class="rules-list scoring-guide"><p><b>經典模式</b><span>每局完成一項小任務挑戰，搭配摸牌與倍率挑戰高分。</span></p><p><b>進階模式</b><span>程式與測試保留，公開入口目前暫停開放。</span></p></div></section>`;
 }
 
 function showHelp(closeAction) {
@@ -2632,6 +2635,7 @@ function resetGame() {
 }
 
 function startGameInMode(mode) {
+  if (!gameModeIsPubliclyAvailable(mode)) return false;
   const enteredPlayerName = elements.playerNameInput.value.trim().slice(0, 12);
   const playerName = enteredPlayerName || EMPTY_PLAYER_DISPLAY_NAME;
   if (enteredPlayerName) {

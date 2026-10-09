@@ -179,8 +179,9 @@ const ranking = (count, start, step) => Array.from({ length: count }, (_, index)
     return { ok: true, status: 200, json: async () => ({ success: true, ranking: [] }) };
   };
   const experimentalStart = getElement("#start-experimental-button").listeners.get("click")();
-  assert.match(api.openingUi().loading, /攤位準備中/);
-  assert.equal(await experimentalStart, true);
+  assert.equal(await experimentalStart, false, "hidden Advanced entry is blocked for players");
+  assert.equal(requests.length, 0, "blocked Advanced entry does not start leaderboard requests");
+  assert.equal(await api.begin("Advanced Internal", "experimental"), true, "Advanced implementation remains available to internal tests");
   assert.equal(requests.length, 2, "Experimental Start still fetches both snapshots");
   assert.equal(api.state().gameMode, "experimental");
   assert.equal(api.state().state, "PRE_ROUND");

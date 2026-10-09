@@ -46,9 +46,10 @@ const source = `${fs.readFileSync(path.join(root, "game-config.js"), "utf8")}\n$
 const startedModes = [];
 beginGameWithLeaderboardSnapshot = async (playerName, mode) => { startedModes.push(mode); game = freshGameState(playerName, mode); return true; };
 globalThis.modeIdentityTest = {
-  async click(selector) { await document.querySelector(selector).listeners.get("click")(); return startedModes.at(-1); },
+  async click(selector) { const before = startedModes.length; await document.querySelector(selector).listeners.get("click")(); return { mode: startedModes.at(-1), starts: startedModes.length - before }; },
   async replay(mode) { game = freshGameState("TEST", mode); await resetGame(); return startedModes.at(-1); },
   displayName(mode) { return gameModeDisplayName(mode); },
+  available(mode) { return gameModeIsPubliclyAvailable(mode); },
   postAllowed(mode) { return gameModeAllowsLeaderboardPost(mode); },
   help() { game = freshGameState("TEST", GAME_MODES.PRODUCTION); game.round = createRound(); return buildModeGuideContent(); }
 };`;
@@ -60,6 +61,7 @@ const api = context.modeIdentityTest;
   const startScreenText = startScreen.replace(/<[^>]+>/g, " ");
   assert.match(startScreen, />經典模式</);
   assert.match(startScreen, />進階模式</);
+  assert.match(startScreen, /id="start-experimental-button"[^>]*class="[^"]*hidden[^"]*"[^>]*aria-hidden="true"[^>]*tabindex="-1"/);
   assert.match(startScreen, />比較純粹的摸麻將體驗</);
   assert.match(startScreen, />更多策略的摸麻將體驗</);
   assert.match(html, /id="pre-round-item-button"[^>]*>道具/);
@@ -68,8 +70,10 @@ const api = context.modeIdentityTest;
   assert.match(css, /\.pre-round-actions\{[^}]*grid-template-columns:minmax\(0,1fr\) minmax\(0,2fr\)/);
   assert.match(config, /id: "multiplier-ticket", title: "倍率券", icon: "倍"/);
   assert.doesNotMatch(startScreenText, /新玩法測試|測試模式|Experimental|Production|🧪|Beta/i);
-  assert.equal(await api.click("#start-game-button"), "production");
-  assert.equal(await api.click("#start-experimental-button"), "experimental");
+  assert.deepEqual(JSON.parse(JSON.stringify(await api.click("#start-game-button"))), { mode: "production", starts: 1 });
+  assert.deepEqual(JSON.parse(JSON.stringify(await api.click("#start-experimental-button"))), { mode: "production", starts: 0 }, "hidden Advanced entry cannot start a public game");
+  assert.equal(api.available("production"), true);
+  assert.equal(api.available("experimental"), false);
   assert.equal(await api.replay("production"), "production");
   assert.equal(await api.replay("experimental"), "experimental");
   assert.equal(api.displayName("production"), "經典模式");
